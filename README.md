@@ -12,6 +12,40 @@ It allows you to develop in an isolated environment, outside of the core Isaac L
 
 **Keywords:** extension, template, isaaclab
 
+## ⚙️ Model File Management Instructions
+
+---
+
+**⚠️ IMPORTANT: This Repository Contains Large Files (LFS)!**
+
+The **gearbox part models (`.usd` files)** within this repository are managed using **Git Large File Storage (LFS)**. If you clone the repository without using LFS, these files will not be properly checked out; you will only receive text pointers instead of the actual model data.
+
+**To correctly retrieve the model files after cloning or pulling the repository content, you must follow these steps:**
+
+1.  ### **Install and Initialize Git LFS**
+
+    Ensure Git LFS is installed on your system. You can set it up by running the following command:
+
+    ```bash
+    git lfs install
+    ```
+
+    *This command only needs to be run **once** on your machine.*
+
+2.  ### **Fetch the Model Files**
+
+    If you are cloning the repository for the first time, or if you cloned it before running `git lfs install`, run the following commands to check out all LFS-managed files:
+
+    ```bash
+    git lfs pull
+    ```
+
+    *(Alternatively, you can use `git lfs fetch` followed by `git lfs checkout`)*
+
+    **Please ensure these steps are completed before attempting to compile or run any code that depends on the `.usd` model files.**
+
+---
+
 ## Installation
 
 - Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
