@@ -127,7 +127,11 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
     def _apply_action(self) -> None:
         self.action, joint_ids = self.rule_policy.get_action()
-        self.robot.set_joint_position_target(self.action, joint_ids=joint_ids)
+        if self.action is not None:
+            self.robot.set_joint_position_target(self.action, joint_ids=joint_ids)
+        # else:
+        #     joint_pos = self.robot.data.default_joint_pos[:, self._joint_idx]
+        #     self.robot.write_joint_position_to_sim(joint_pos, self._joint_idx, None)
         self.rule_policy.count += 1
         sim_dt = self.sim.get_physics_dt()
         print(f"Time: {self.rule_policy.count * sim_dt}")
@@ -492,9 +496,9 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         # self.robot.write_joint_state_to_sim(joint_pos, None, self._joint_idx, env_ids)
         self.robot.write_joint_position_to_sim(joint_pos, self._joint_idx, env_ids)
+        self.robot.set_joint_position_target(joint_pos, self._joint_idx, env_ids)
 
-        self.robot.write_joint_position_to_sim(torch.tensor([28.6479 / 180.0 * math.pi, -45.8366 / 180.0 * math.pi, 28.6479 / 180.0 * math.pi], device=self.device), self._torso_joint_idx, env_ids)
+        # self.robot.write_joint_position_to_sim(torch.tensor([28.6479 / 180.0 * math.pi, -45.8366 / 180.0 * math.pi, 28.6479 / 180.0 * math.pi], device=self.device), self._torso_joint_idx, env_ids)
 
-        # print(f"Initial joint_pos: {joint_pos}")
         
 

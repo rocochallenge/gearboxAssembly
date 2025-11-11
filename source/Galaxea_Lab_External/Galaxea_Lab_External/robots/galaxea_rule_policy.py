@@ -69,10 +69,10 @@ class GalaxeaRulePolicy:
         self.right_gripper_joint_ids = self.right_gripper_entity_cfg.joint_ids
         self.left_gripper_joint_ids = self.left_gripper_entity_cfg.joint_ids
 
-        self.target_position_left = torch.tensor([0.3864, 0.5237, 1.1475], device=self.device)
-        self.target_orientation_left = torch.tensor([0.0, -1.0, 0.0, 0.0], device=self.device)
-        self.target_position_right = torch.tensor([0.3864, -0.5237, 1.1475], device=self.device)
-        self.target_orientation_right = torch.tensor([0.0, -1.0, 0.0, 0.0], device=self.device)
+        # self.target_position_left = torch.tensor([0.3864, 0.5237, 1.1475], device=self.device)
+        # self.target_orientation_left = torch.tensor([0.0, -1.0, 0.0, 0.0], device=self.device)
+        # self.target_position_right = torch.tensor([0.3864, -0.5237, 1.1475], device=self.device)
+        # self.target_orientation_right = torch.tensor([0.0, -1.0, 0.0, 0.0], device=self.device)
 
         self.num_gripper_joints = None
 
@@ -87,7 +87,7 @@ class GalaxeaRulePolicy:
         self.count = 0
 
         # Time for intital stabilization
-        self.time_step_0 = 1.0
+        self.time_step_0 = 0.2
         self.count_step_0 = int(self.time_step_0 / self.sim_dt)
         print(f"count_step_0: {self.count_step_0}")
 
@@ -654,33 +654,34 @@ class GalaxeaRulePolicy:
     def get_action(self):
         if self.count < self.count_step_0:
             # left arm
-            left_action, left_arm_joint_ids = self.move_robot_to_position(self.left_arm_entity_cfg, 
-                                    self.left_gripper_entity_cfg, self.diff_ik_controller, 
-                                    self.target_position_left, self.target_orientation_left, None)
-            # right arm
-            right_action, right_arm_joint_ids = self.move_robot_to_position(self.right_arm_entity_cfg, self.right_gripper_entity_cfg, self.diff_ik_controller, 
-                                    self.target_position_right, self.target_orientation_right, None)
+            # left_action, left_arm_joint_ids = self.move_robot_to_position(self.left_arm_entity_cfg, 
+            #                         self.left_gripper_entity_cfg, self.diff_ik_controller, 
+            #                         self.target_position_left, self.target_orientation_left, None)
+            # # right arm
+            # right_action, right_arm_joint_ids = self.move_robot_to_position(self.right_arm_entity_cfg, self.right_gripper_entity_cfg, self.diff_ik_controller, 
+            #                         self.target_position_right, self.target_orientation_right, None)
             
-            # gripper_joint_pos_des = torch.full(
-            #     (self.num_gripper_joints,), 0.04, device=self.sim.device
-            # )
-            gripper_joint_pos_des = torch.tensor([[0.04, 0.04]], device=self.sim.device)
+            # # gripper_joint_pos_des = torch.full(
+            # #     (self.num_gripper_joints,), 0.04, device=self.sim.device
+            # # )
+            # gripper_joint_pos_des = torch.tensor([[0.04, 0.04]], device=self.sim.device)
 
-            # self.scene["robot"].set_joint_position_target(
-            #     gripper_joint_pos_des, joint_ids=self.right_gripper_joint_ids
-            # )
-            # self.scene["robot"].set_joint_position_target(
-            #     gripper_joint_pos_des, joint_ids=self.left_gripper_joint_ids
-            # )
+            # # self.scene["robot"].set_joint_position_target(
+            # #     gripper_joint_pos_des, joint_ids=self.right_gripper_joint_ids
+            # # )
+            # # self.scene["robot"].set_joint_position_target(
+            # #     gripper_joint_pos_des, joint_ids=self.left_gripper_joint_ids
+            # # )
 
-            # print(f"left_action: {left_action}")
-            # print(f"right_action: {right_action}")
-            # print(f"gripper_joint_pos_des: {gripper_joint_pos_des}")
+            # # print(f"left_action: {left_action}")
+            # # print(f"right_action: {right_action}")
+            # # print(f"gripper_joint_pos_des: {gripper_joint_pos_des}")
 
-            action = torch.cat([left_action, right_action, gripper_joint_pos_des, gripper_joint_pos_des], dim=-1)
-            joint_ids = left_arm_joint_ids + right_arm_joint_ids + self.right_gripper_joint_ids + self.left_gripper_joint_ids
+            # action = torch.cat([left_action, right_action, gripper_joint_pos_des, gripper_joint_pos_des], dim=-1)
+            # joint_ids = left_arm_joint_ids + right_arm_joint_ids + self.right_gripper_joint_ids + self.left_gripper_joint_ids
 
-
+            action = None
+            joint_ids = None
 
         # Pick up the 1st gear
         if self.count >= self.count_step_1[0] and self.count < self.count_step_1[-1]:

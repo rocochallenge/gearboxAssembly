@@ -1,10 +1,17 @@
-# Template for Isaac Lab Projects
+# RoCo Challenge: Robotic Collaborative Assembling - HMI Workshop @ AAAI 2026
+![RoCo Challenge Poster](docs/images/poster.png)
+Code Repository for the [RoCo Challenge@AAAI 2026](https://rocochallenge.github.io/RoCo2026/doc.html)
+
+The Gearbox Assembly Assistance Challenge evaluates bimanual robotic systems in collaborative gearbox assembly within manufacturing environments. It targets scenarios where robots work seamlessly with human operators.
 
 ## Overview
 
-In this project, we setup a Isaac Lab environment for the R1 gearbox assembly task.
+In this project, we setup a Isaac Lab environment for the Galaxea R1 gearbox assembly task. 
 
-## ⚙️ Model File Management Instructions
+
+
+## Installation
+### ⚙️ Model File Management Instructions
 
 ---
 
@@ -37,9 +44,7 @@ The **gearbox part models (`.usd` files)** within this repository are managed us
     **Please ensure these steps are completed before attempting to compile or run any code that depends on the `.usd` model files.**
 
 ---
-
-## Installation
-
+### Installation Steps
 - Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
   We recommend using the conda installation as it simplifies calling Python scripts from the terminal.
 
