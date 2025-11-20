@@ -64,8 +64,8 @@ RING_GEAR_CFG = RigidObjectCfg(
         rigid_props=RigidBodyPropertiesCfg(
             disable_gravity=False,
             max_depenetration_velocity=1.0,
-            linear_damping=0.01,
-            angular_damping=0.01,
+            linear_damping=0.0,
+            angular_damping=0.0,
             max_linear_velocity=100.0,
             max_angular_velocity=100.0,
             enable_gyroscopic_forces=False,
@@ -74,7 +74,7 @@ RING_GEAR_CFG = RigidObjectCfg(
             max_contact_impulse=1.0,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.001),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=0.0),
         # physics_material=sim_utils.RigidBodyMaterialCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
@@ -90,8 +90,8 @@ SUN_PLANETARY_GEAR_CFG = RigidObjectCfg(
         rigid_props=RigidBodyPropertiesCfg(
             disable_gravity=False,
             max_depenetration_velocity=0.5,
-            linear_damping=0.05,
-            angular_damping=0.05,
+            linear_damping=0.0,
+            angular_damping=0.0,
             max_linear_velocity=100.0,
             max_angular_velocity=100.0,
             enable_gyroscopic_forces=False,
@@ -100,7 +100,7 @@ SUN_PLANETARY_GEAR_CFG = RigidObjectCfg(
             max_contact_impulse=0.5,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.001),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=0.0),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(0.5, 0.0, 1.0),
@@ -115,8 +115,8 @@ PLANETARY_CARRIER_CFG = RigidObjectCfg(
         rigid_props=RigidBodyPropertiesCfg(
             disable_gravity=False,
             max_depenetration_velocity=0.5,
-            linear_damping=0.05,
-            angular_damping=0.05,
+            linear_damping=0.0,
+            angular_damping=0.0,
             max_linear_velocity=100.0,
             max_angular_velocity=100.0,
             enable_gyroscopic_forces=False,
@@ -125,7 +125,7 @@ PLANETARY_CARRIER_CFG = RigidObjectCfg(
             max_contact_impulse=0.5,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.001),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=0.0),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(0.6, 0.4, 1.0),
@@ -152,8 +152,8 @@ PLANETARY_REDUCER_CFG = RigidObjectCfg(
         rigid_props=RigidBodyPropertiesCfg(
             disable_gravity=False,
             max_depenetration_velocity=1.0,
-            linear_damping=0.01,
-            angular_damping=0.01,
+            linear_damping=0.0,
+            angular_damping=0.0,
             max_linear_velocity=100.0,
             max_angular_velocity=100.0,
             enable_gyroscopic_forces=False,
@@ -162,7 +162,7 @@ PLANETARY_REDUCER_CFG = RigidObjectCfg(
             max_contact_impulse=1.0,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.001),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=0.0),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(0.5, 0.0, 1.0),

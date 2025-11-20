@@ -7,8 +7,12 @@ from __future__ import annotations
 
 import math
 import torch
-from collections.abc import Sequence
+import numpy as np
+# from torchvision.utils import save_image
+from PIL import Image
 
+from collections.abc import Sequence
+import os
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, AssetBase, RigidObject
 from isaaclab.envs import DirectRLEnv
@@ -27,6 +31,8 @@ import isaacsim.core.utils.torch as torch_utils
 from Galaxea_Lab_External.robots import GalaxeaRulePolicy
 from isaaclab.sensors import Camera
 
+import h5py
+
 class GalaxeaLabExternalEnv(DirectRLEnv):
     cfg: GalaxeaLabExternalEnvCfg
 
@@ -38,7 +44,18 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self._left_gripper_dof_idx, _ = self.robot.find_joints(self.cfg.left_gripper_dof_name)
         self._right_gripper_dof_idx, _ = self.robot.find_joints(self.cfg.right_gripper_dof_name)
 
+        self._left_arm_action = torch.zeros(self._left_arm_joint_idx, device=self.device)
+        self._right_arm_action = torch.zeros(self._right_arm_joint_idx, device=self.device)
+        self._left_gripper_action = torch.zeros(1, device=self.device)
+        self._right_gripper_action = torch.zeros(1, device=self.device)
+
         self._torso_joint_idx, _ = self.robot.find_joints(self.cfg.torso_joint_dof_name)
+
+        print(f"_torso_joint_idx: {self._torso_joint_idx}")
+
+        self._torso_joint1_idx, _ = self.robot.find_joints(self.cfg.torso_joint1_dof_name)
+        self._torso_joint2_idx, _ = self.robot.find_joints(self.cfg.torso_joint2_dof_name)
+        self._torso_joint3_idx, _ = self.robot.find_joints(self.cfg.torso_joint3_dof_name)
 
         print(f"_left_arm_joint_idx: {self._left_arm_joint_idx}")
         print(f"_right_arm_joint_idx: {self._right_arm_joint_idx}")
@@ -51,21 +68,58 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.right_arm_joint_pos = self.robot.data.joint_pos[:, self._right_arm_joint_idx]
         self.left_gripper_joint_pos = self.robot.data.joint_pos[:, self._left_gripper_dof_idx]
         self.right_gripper_joint_pos = self.robot.data.joint_pos[:, self._right_gripper_dof_idx]
+
+        self.left_arm_joint_vel = self.robot.data.joint_vel[:, self._left_arm_joint_idx]
+        self.right_arm_joint_vel = self.robot.data.joint_vel[:, self._right_arm_joint_idx]
+        self.left_gripper_joint_vel = self.robot.data.joint_vel[:, self._left_gripper_dof_idx]
+        self.right_gripper_joint_vel = self.robot.data.joint_vel[:, self._right_gripper_dof_idx]
         
         print(f"left_arm_joint_pos: {self.left_arm_joint_pos}")
         print(f"right_arm_joint_pos: {self.right_arm_joint_pos}")
         print(f"left_gripper_joint_pos: {self.left_gripper_joint_pos}")
         print(f"right_gripper_joint_pos: {self.right_gripper_joint_pos}")
 
+        print(f"left_arm_joint_vel: {self.left_arm_joint_vel}")
+        print(f"right_arm_joint_vel: {self.right_arm_joint_vel}")
+        print(f"left_gripper_joint_vel: {self.left_gripper_joint_vel}")
+        print(f"right_gripper_joint_vel: {self.right_gripper_joint_vel}")
+
         self.joint_pos = self.robot.data.joint_pos[:, self._joint_idx]
 
         self.rule_policy = GalaxeaRulePolicy(sim_utils.SimulationContext.instance(), self.scene, self.obj_dict)
         self.initial_root_state = None
 
+        self.act = dict()
+        self.obs = dict()
+
+        self.score = 0
+
+        self.data_dict = {
+            '/observations/head_rgb': [],
+            '/observations/left_hand_rgb': [],
+            '/observations/right_hand_rgb': [],
+            '/observations/head_depth': [],
+            '/observations/left_hand_depth': [],
+            '/observations/right_hand_depth': [],
+            '/observations/left_arm_joint_pos': [],
+            '/observations/right_arm_joint_pos': [],
+            '/observations/left_gripper_joint_pos': [],
+            '/observations/right_gripper_joint_pos': [],
+            '/observations/left_arm_joint_vel': [],
+            '/observations/right_arm_joint_vel': [],
+            '/observations/left_gripper_joint_vel': [],
+            '/observations/right_gripper_joint_vel': [],
+            '/actions/left_arm_action': [],
+            '/actions/right_arm_action': [],
+            '/actions/left_gripper_action': [],
+            '/actions/right_gripper_action': [],
+            '/score': [],
+            '/current_time': [],
+        }
+
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot_cfg)
-        # self.table = Articulation(self.cfg.table_cfg)
-        # self.cfg.table_cfg.func("/World/envs/env_.*/Table", self.cfg.table_cfg)
+        
         self.head_camera = Camera(self.cfg.head_camera_cfg)
         self.left_hand_camera = Camera(self.cfg.left_hand_camera_cfg)
         self.right_hand_camera = Camera(self.cfg.right_hand_camera_cfg)
@@ -84,8 +138,10 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         self.pin_local_positions = [
             torch.tensor([0.0, -0.054, 0.0], device=self.device),      # pin_0
-            torch.tensor([0.0465, 0.0268, 0.0], device=self.device),   # pin_1
-            torch.tensor([-0.0465, 0.0268, 0.0], device=self.device),  # pin_2
+            # torch.tensor([0.0465, 0.0268, 0.0], device=self.device),   # pin_1
+            # torch.tensor([-0.0465, 0.0268, 0.0], device=self.device),  # pin_2
+            torch.tensor([0.0471, 0.0268, 0.0], device=self.device),   # pin_1
+            torch.tensor([-0.0471, 0.0268, 0.0], device=self.device),  # pin_2
         ]
 
 
@@ -122,19 +178,34 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self._initialize_scene()
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        self.actions = actions.clone()
+        # self.actions = actions.clone()
         # print(f"_pre_physics_step actions: {self.actions}")
+        current_pos = self.robot.data.joint_pos
+
+        self._left_arm_action = current_pos[:, self._left_arm_joint_idx]
+        self._right_arm_action = current_pos[:, self._right_arm_joint_idx]
+        self._left_gripper_action = current_pos[:, self._left_gripper_dof_idx[0]]
+        self._right_gripper_action = current_pos[:, self._right_gripper_dof_idx[0]]
 
     def _apply_action(self) -> None:
-        self.action, joint_ids = self.rule_policy.get_action()
-        if self.action is not None:
-            self.robot.set_joint_position_target(self.action, joint_ids=joint_ids)
-        # else:
-        #     joint_pos = self.robot.data.default_joint_pos[:, self._joint_idx]
-        #     self.robot.write_joint_position_to_sim(joint_pos, self._joint_idx, None)
+        # print(f"Time: {self.rule_policy.count * self.sim.get_physics_dt()}, Apply action")
+        action, joint_ids = self.rule_policy.get_action()
+
+        if joint_ids is not None:
+            if joint_ids == self._left_arm_joint_idx:
+                self._left_arm_action = action
+            elif joint_ids == self._right_arm_joint_idx:
+                self._right_arm_action = action
+            elif joint_ids == self._left_gripper_dof_idx:
+                self._left_gripper_action = action[0]
+            elif joint_ids == self._right_gripper_dof_idx:
+                self._right_gripper_action = action[0]
+
+            self.robot.set_joint_position_target(action, joint_ids=joint_ids)
+
         self.rule_policy.count += 1
         sim_dt = self.sim.get_physics_dt()
-        print(f"Time: {self.rule_policy.count * sim_dt}")
+        # print(f"Time: {self.rule_policy.count * sim_dt}")
         # print(f"action: {self.action}")
         # print(f"joint_ids: {joint_ids}")
 
@@ -145,14 +216,51 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         for obj_name, obj in self.obj_dict.items():
             obj.update(sim_dt)
 
+        for cam in [self.head_camera, self.left_hand_camera, self.right_hand_camera]:
+            cam.update(dt=sim_dt)
+
+
+        self.act = dict(left_arm_action=self._left_arm_action, right_arm_action=self._right_arm_action,
+            left_gripper_action=self._left_gripper_action, right_gripper_action=self._right_gripper_action)
+
+
     def _get_observations(self) -> dict:
+        print(f"Time: {self.rule_policy.count * self.sim.get_physics_dt()}, Get observations")
         data_type = "rgb"
-        rgb = self.head_camera.data.output[data_type]
+        # self.head_camera._update_outdated_buffers()
+        # self.left_hand_camera._update_outdated_buffers()
+        # self.right_hand_camera._update_outdated_buffers()
+
+        # self.render()
+
+        head_rgb = self.head_camera.data.output[data_type]
         left_hand_rgb = self.left_hand_camera.data.output[data_type]
         right_hand_rgb = self.right_hand_camera.data.output[data_type]
-        print(f"rgb: {rgb.shape}")
-        print(f"left_hand_rgb: {left_hand_rgb.shape}")
-        print(f"right_hand_rgb: {right_hand_rgb.shape}")
+
+        # Export head_rgb
+        # head_rgb_path = os.path.join(f"./data/head_rgb_{self.rule_policy.count}.png")
+        # print(f"shape of head_rgb: {head_rgb.shape}")
+        # print(f"head_rgb: {head_rgb}")
+        # # save_image(head_rgb[0], head_rgb_path)
+        # Image.fromarray(head_rgb[0].cpu().numpy()).save(head_rgb_path)
+
+        data_type = "distance_to_image_plane"
+        head_depth = self.head_camera.data.output[data_type]
+        left_hand_depth = self.left_hand_camera.data.output[data_type]
+        right_hand_depth = self.right_hand_camera.data.output[data_type]
+
+        self.left_arm_joint_pos = self.robot.data.joint_pos[:, self._left_arm_joint_idx]
+        self.right_arm_joint_pos = self.robot.data.joint_pos[:, self._right_arm_joint_idx]
+        self.left_gripper_joint_pos = self.robot.data.joint_pos[:, self._left_gripper_dof_idx[0]]
+        self.right_gripper_joint_pos = self.robot.data.joint_pos[:, self._right_gripper_dof_idx[0]]
+        self.left_arm_joint_vel = self.robot.data.joint_vel[:, self._left_arm_joint_idx]
+        self.right_arm_joint_vel = self.robot.data.joint_vel[:, self._right_arm_joint_idx]
+        self.left_gripper_joint_vel = self.robot.data.joint_vel[:, self._left_gripper_dof_idx[0]]
+        self.right_gripper_joint_vel = self.robot.data.joint_vel[:, self._right_gripper_dof_idx[0]]
+        
+        # print(f"rgb: {rgb.shape}")
+        # print(f"left_hand_rgb: {left_hand_rgb.shape}")
+        # print(f"right_hand_rgb: {right_hand_rgb.shape}")
 
         # obs = torch.cat(
         #     (
@@ -166,11 +274,18 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         #     ),
         #     dim=-1,
         # )
-        obs = dict(rgb=rgb, left_hand_rgb=left_hand_rgb, right_hand_rgb=right_hand_rgb,
-            left_arm_joint_pos=self.left_arm_joint_pos, right_arm_joint_pos=self.right_arm_joint_pos,
-            left_gripper_joint_pos=self.left_gripper_joint_pos, right_gripper_joint_pos=self.right_gripper_joint_pos)
+        self.obs = dict(head_rgb=head_rgb, left_hand_rgb=left_hand_rgb, right_hand_rgb=right_hand_rgb,
+            head_depth=head_depth, left_hand_depth=left_hand_depth, right_hand_depth=right_hand_depth,
+            left_arm_joint_pos=self.left_arm_joint_pos, left_arm_joint_vel=self.left_arm_joint_vel, 
+            left_gripper_joint_pos=self.left_gripper_joint_pos, left_gripper_joint_vel=self.left_gripper_joint_vel,
+            right_arm_joint_pos=self.right_arm_joint_pos, right_arm_joint_vel=self.right_arm_joint_vel,
+            right_gripper_joint_pos=self.right_gripper_joint_pos, right_gripper_joint_vel=self.right_gripper_joint_vel)
+
+        # actions = dict(left_arm_action=self.action, right_arm_action=self.action, left_gripper_action=self.action, right_gripper_action=self.action)
+
+        # print(f'obs: {obs}')
             
-        observations = {"policy": obs}
+        observations = {"policy": self.obs}
         return observations
 
 
@@ -273,20 +388,20 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         return score, time_cost
 
     def _get_rewards(self) -> torch.Tensor:
-        score, time_cost = self.evaluate_score()
-        print(f"score: {score}")
+        self.score, time_cost = self.evaluate_score()
+        print(f"score: {self.score}")
 
-        return score
+        return self.score
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        finish_task = torch.tensor(self.evaluate_score() == 6, device=self.device)
+        finish_task = torch.tensor(self.evaluate_score() == 6, device=self.device) or self.rule_policy.count >= self.rule_policy.total_time_steps
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         return finish_task, time_out
 
     def _initialize_scene(self):
         gripper_mat_cfg = physics_materials_cfg.RigidBodyMaterialCfg(
-            static_friction=2.0,
-            dynamic_friction=2.0,
+            static_friction=self.cfg.gripper_friction_coefficient,
+            dynamic_friction=self.cfg.gripper_friction_coefficient,
             restitution=0.0,
             # (optional) combination modes if you need them:
             friction_combine_mode="average"
@@ -304,8 +419,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             sim_utils.bind_physics_material(f"/World/envs/env_{env_idx}/Robot/right_gripper_link2/collisions", "/World/Materials/gripper_material")
 
         gear_mat_cfg = physics_materials_cfg.RigidBodyMaterialCfg(
-            static_friction=0.12,
-            dynamic_friction=0.12,
+            static_friction=self.cfg.gears_friction_coefficient,
+            dynamic_friction=self.cfg.gears_friction_coefficient,
             restitution=0.0,
             friction_combine_mode="average"
         )
@@ -320,8 +435,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             sim_utils.bind_physics_material(f"/World/envs/env_{env_idx}/planetary_reducer/node_/mesh_", "/World/Materials/gear_material")
         
         table_mat_cfg = physics_materials_cfg.RigidBodyMaterialCfg(
-            static_friction=0.5,
-            dynamic_friction=0.5,
+            static_friction=self.cfg.table_friction_coefficient,
+            dynamic_friction=self.cfg.table_friction_coefficient,
             restitution=0.0,
             friction_combine_mode="average"
         )
@@ -362,8 +477,6 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             'planetary_reducer': 0.04,     # Medium reducer
         }
 
-        x_offset = 0.2
-
         initial_root_state = {obj_name: torch.zeros((self.scene.num_envs, 7), device=self.device) for obj_name in object_names}
 
         num_envs = self.scene.num_envs
@@ -393,24 +506,24 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
                 for attempt in range(max_attempts):
                     # Generate random position
-                    x = torch.rand(1, device=self.device).item() * 0.2 + 0.3 + x_offset  # range [0.3, 0.6]
-                    y = torch.rand(1, device=self.device).item() * 0.6 - 0.3  # range [-0.3, 0.3]
+                    x = torch.rand(1, device=self.device).item() * 0.2 + 0.3 + self.cfg.x_offset  # range [0.3, 0.6]
+                    y = torch.rand(1, device=self.device).item() * 0.8 - 0.4  # range [-0.4, 0.4]
                     z = 0.92
 
-                    if obj_name == "ring_gear":
-                        x = 0.24 + x_offset
-                        y = 0.0
-                    elif obj_name == "planetary_carrier":
-                        x = 0.42 + x_offset 
+                    # if obj_name == "ring_gear":
+                        # x = 0.26 + self.cfg.x_offset
+                        # y = 0.0
+                    if obj_name == "planetary_carrier":
+                        x = 0.4 + self.cfg.x_offset 
                         y = 0.0
                     elif obj_name == "sun_planetary_gear_1":
-                        y = torch.rand(1, device=self.device).item() * 0.3
+                        y = torch.rand(1, device=self.device).item() * 0.4
                     elif obj_name == "sun_planetary_gear_2":
-                        y = torch.rand(1, device=self.device).item() * 0.3
+                        y = torch.rand(1, device=self.device).item() * 0.4
                     elif obj_name == "sun_planetary_gear_3":
-                        y = -torch.rand(1, device=self.device).item() * 0.3
+                        y = -torch.rand(1, device=self.device).item() * 0.4
                     elif obj_name == "sun_planetary_gear_4":
-                        y = -torch.rand(1, device=self.device).item() * 0.3
+                        y = -torch.rand(1, device=self.device).item() * 0.4
 
                     pos = torch.tensor([x, y, z], device=self.device)
 
@@ -458,10 +571,10 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             env_ids = self.robot._ALL_INDICES
         super()._reset_idx(env_ids)
 
-        self.initial_root_state = self._randomize_object_positions([self.ring_gear, self.planetary_carrier,
+        self.initial_root_state = self._randomize_object_positions([self.planetary_carrier, self.ring_gear, 
                                         self.sun_planetary_gear_1, self.sun_planetary_gear_2,
                                         self.sun_planetary_gear_3, self.sun_planetary_gear_4,
-                                        self.planetary_reducer], ['ring_gear', 'planetary_carrier',
+                                        self.planetary_reducer], ['planetary_carrier', 'ring_gear', 
                                         'sun_planetary_gear_1', 'sun_planetary_gear_2',
                                         'sun_planetary_gear_3', 'sun_planetary_gear_4',
                                         'planetary_reducer'])
@@ -477,8 +590,6 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         #     joint_pos.device,
         # )
 
-        # print(f"shape of joint_pos: {joint_pos.shape}")
-
         # default_root_state = self.robot.data.default_root_state[env_ids]
         # default_root_state[:, :3] += self.scene.env_origins[env_ids]
 
@@ -486,9 +597,6 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         # print(f"default_root_state: {default_root_state}")
 
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
-
-        # print(f"default_root_state: {default_root_state}")
-        # print(f"self.scene.env_origins[env_ids]: {self.scene.env_origins[env_ids]}")
 
         self.joint_pos[env_ids] = joint_pos
         # self.arm_joint_vel[env_ids] = arm_joint_vel
@@ -498,7 +606,124 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.robot.write_joint_position_to_sim(joint_pos, self._joint_idx, env_ids)
         self.robot.set_joint_position_target(joint_pos, self._joint_idx, env_ids)
 
-        # self.robot.write_joint_position_to_sim(torch.tensor([28.6479 / 180.0 * math.pi, -45.8366 / 180.0 * math.pi, 28.6479 / 180.0 * math.pi], device=self.device), self._torso_joint_idx, env_ids)
+        # Write the default torso joint position to simulation
+        self.robot.write_joint_position_to_sim(torch.tensor([self.cfg.initial_torso_joint1_pos, self.cfg.initial_torso_joint2_pos, self.cfg.initial_torso_joint3_pos], device=self.device), self._torso_joint_idx, env_ids)
 
+        # Set torso joint position limit
+        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_joint1_pos, self.cfg.initial_torso_joint1_pos], device=self.device), self._torso_joint1_idx, env_ids)
+        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_joint2_pos, self.cfg.initial_torso_joint2_pos], device=self.device), self._torso_joint2_idx, env_ids)
+        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_joint3_pos, self.cfg.initial_torso_joint3_pos], device=self.device), self._torso_joint3_idx, env_ids)
+
+
+        # self.head_camera.reset(env_ids)
+
+
+    def step(self, actions):
+        obs, reward, terminated, truncated, info = super().step(actions)
+
+        if self.cfg.record_data and (self.rule_policy.count % self.cfg.record_freq == 0):
+            self._record_data()
+
+        return obs, reward, terminated, truncated, info
+
+
+    def _record_data(self):
+        """
+        At sampling rate : self.cfg.record_freq
+        observations
+        - observations
+            - head_rgb     (240, 320, 3) 'uint8'
+            - left_hand_rgb     (240, 320, 3) 'uint8'
+            - right_hand_rgb     (240, 320, 3) 'uint8'
+            - head_depth     (240, 320) 'float32'
+            - left_hand_depth     (240, 320) 'float32'
+            - right_hand_depth     (240, 320) 'float32'
+            - left_arm_joint_pos     (6,) 'float32'
+            - right_arm_joint_pos     (6,) 'float32'
+            - left_gripper_joint_pos     (1,) 'float32'
+            - right_gripper_joint_pos     (1,) 'float32'
+            - left_arm_joint_vel     (6,) 'float32'
+            - right_arm_joint_vel     (6,) 'float32'
+            - left_gripper_joint_vel     (1,) 'float32'
+            - right_gripper_joint_vel     (1,) 'float32'
+
+        - actions
+            - left_arm_action     (6,) 'float32'
+            - right_arm_action     (6,) 'float32'
+            - left_gripper_action     (1,) 'float32'
+            - right_gripper_action     (1,) 'float32'
+        """
+
+        # print(f"Type and shape of data_dict:")
+        # for key, value in self.data_dict.items():
+        #     print(f"{key}: {type(value)}")
+        #     if isinstance(value, np.ndarray):
+        #         print(f"Shape: {value.shape}")
+        #         print(f"Type: {value.dtype}")
+
+        self.data_dict['/observations/head_rgb'].append(self.obs['head_rgb'].cpu().numpy().squeeze(0))
+        self.data_dict['/observations/left_hand_rgb'].append(self.obs['left_hand_rgb'].cpu().numpy().squeeze(0))
+        self.data_dict['/observations/right_hand_rgb'].append(self.obs['right_hand_rgb'].cpu().numpy().squeeze(0))
+        self.data_dict['/observations/head_depth'].append(self.obs['head_depth'].cpu().numpy().squeeze(0).squeeze(-1))
+        self.data_dict['/observations/left_hand_depth'].append(self.obs['left_hand_depth'].cpu().numpy().squeeze(0).squeeze(-1))   
+        self.data_dict['/observations/right_hand_depth'].append(self.obs['right_hand_depth'].cpu().numpy().squeeze(0).squeeze(-1))
+        
+        self.data_dict['/observations/left_arm_joint_pos'].append(self.obs['left_arm_joint_pos'].cpu().numpy().squeeze(0))
+        self.data_dict['/observations/right_arm_joint_pos'].append(self.obs['right_arm_joint_pos'].cpu().numpy().squeeze(0))
+        self.data_dict['/observations/left_gripper_joint_pos'].append(self.obs['left_gripper_joint_pos'].cpu().numpy()[0].squeeze(0))
+        self.data_dict['/observations/right_gripper_joint_pos'].append(self.obs['right_gripper_joint_pos'].cpu().numpy()[0].squeeze(0))
+        
+        self.data_dict['/observations/left_arm_joint_vel'].append(self.obs['left_arm_joint_vel'].cpu().numpy().squeeze(0))
+        self.data_dict['/observations/right_arm_joint_vel'].append(self.obs['right_arm_joint_vel'].cpu().numpy().squeeze(0))
+        self.data_dict['/observations/left_gripper_joint_vel'].append(self.obs['left_gripper_joint_vel'].cpu().numpy()[0].squeeze(0))
+        self.data_dict['/observations/right_gripper_joint_vel'].append(self.obs['right_gripper_joint_vel'].cpu().numpy()[0].squeeze(0))
+        
+        self.data_dict['/actions/left_arm_action'].append(self.act['left_arm_action'].cpu().numpy().squeeze(0))
+        self.data_dict['/actions/right_arm_action'].append(self.act['right_arm_action'].cpu().numpy().squeeze(0))
+        self.data_dict['/actions/left_gripper_action'].append(self.act['left_gripper_action'].cpu().numpy()[0].squeeze(0))
+        self.data_dict['/actions/right_gripper_action'].append(self.act['right_gripper_action'].cpu().numpy()[0].squeeze(0))
+
+        self.data_dict['/score'].append(self.score)
+        self.data_dict['/current_time'].append(self.rule_policy.count * self.sim.get_physics_dt())
+       
         
 
+        # Write data to hdf5 file
+        with h5py.File('./data/data.hdf5', 'w') as f:
+            f.attrs['sim'] = True
+            obs = f.create_group('observations')
+            act = f.create_group('actions')
+            num_items = len(self.data_dict['/observations/head_rgb'])
+            obs.create_dataset('head_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
+            obs.create_dataset('left_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
+            obs.create_dataset('right_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
+            obs.create_dataset('head_depth', shape=(num_items, 240, 320), dtype='float32')
+            obs.create_dataset('left_hand_depth', shape=(num_items, 240, 320), dtype='float32')
+            obs.create_dataset('right_hand_depth', shape=(num_items, 240, 320), dtype='float32')
+            obs.create_dataset('left_arm_joint_pos', shape=(num_items, 6), dtype='float32')
+            obs.create_dataset('right_arm_joint_pos', shape=(num_items, 6), dtype='float32')
+            obs.create_dataset('left_gripper_joint_pos', shape=(num_items, ), dtype='float32')
+            obs.create_dataset('right_gripper_joint_pos', shape=(num_items, ), dtype='float32')
+            obs.create_dataset('left_arm_joint_vel', shape=(num_items, 6), dtype='float32')
+            obs.create_dataset('right_arm_joint_vel', shape=(num_items, 6), dtype='float32')
+            obs.create_dataset('left_gripper_joint_vel', shape=(num_items, ), dtype='float32')
+            obs.create_dataset('right_gripper_joint_vel', shape=(num_items, ), dtype='float32')
+            act.create_dataset('left_arm_action', shape=(num_items, 6), dtype='float32')
+            act.create_dataset('right_arm_action', shape=(num_items, 6), dtype='float32')
+            act.create_dataset('left_gripper_action', shape=(num_items, ), dtype='float32')
+            act.create_dataset('right_gripper_action', shape=(num_items, ), dtype='float32')
+            
+            f.create_dataset('score', shape=(num_items,), dtype='int32')
+            f.create_dataset('current_time', shape=(num_items,), dtype='float32')
+            # f.create_dataset('time_cost', data=self.time_cost)
+
+            for name, value in self.data_dict.items():
+                # print(f"Writing {name} to hdf5 file")
+                f[name][...] = value
+
+        print(f"Saved data at {self.rule_policy.count * self.cfg.record_freq} steps")
+            
+            
+            
+
+       
