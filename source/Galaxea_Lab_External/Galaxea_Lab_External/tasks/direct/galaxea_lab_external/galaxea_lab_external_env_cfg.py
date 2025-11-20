@@ -39,12 +39,12 @@ from Galaxea_Lab_External.robots import (
 class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
 
     # Record data
-    record_data = False
-    record_freq = 20
+    record_data = True
+    record_freq = 5
 
     # env
     decimation = 5
-    # episode_length_s = 60.0
+    episode_length_s = 60.0
     # - spaces definition
     action_space = 16
     observation_space = 16

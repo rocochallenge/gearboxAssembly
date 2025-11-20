@@ -660,6 +660,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         #     if isinstance(value, np.ndarray):
         #         print(f"Shape: {value.shape}")
         #         print(f"Type: {value.dtype}")
+        print("Begin to record data")
 
         self.data_dict['/observations/head_rgb'].append(self.obs['head_rgb'].cpu().numpy().squeeze(0))
         self.data_dict['/observations/left_hand_rgb'].append(self.obs['left_hand_rgb'].cpu().numpy().squeeze(0))

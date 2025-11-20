@@ -484,7 +484,7 @@ class GalaxeaRulePolicy:
         elif gear_id == 6: # Reducer
             root_state = self.initial_root_state["planetary_reducer"]
             # target_position = root_state[:, :3].clone()
-            obj_height_offset = 0.06
+            obj_height_offset = 0.05
 
         else:
             root_state = self.initial_root_state[f"sun_planetary_gear_{gear_id}"]
@@ -591,7 +591,7 @@ class GalaxeaRulePolicy:
             if self.count == count_step[0]:
                 self.current_target_position = root_state[:, :3].clone()
                 self.current_target_orientation = root_state[:, 3:7].clone()
-            obj_height_offset = 0.02
+            obj_height_offset = 0.023 + 0.02
 
 
         else: # Mount the gear on the planetary carrier
