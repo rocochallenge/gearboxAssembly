@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import torch
 import numpy as np
+from datetime import datetime
 # from torchvision.utils import save_image
 from PIL import Image
 
@@ -120,6 +121,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             '/score': [],
             '/current_time': [],
         }
+
+        self.save_hdf5_file_name = './data/data_' + datetime.now().strftime("%Y%m%d_%H%M%S") + '.hdf5'
 
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot_cfg)
@@ -722,7 +725,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         
 
         # Write data to hdf5 file
-        with h5py.File('./data/data.hdf5', 'w') as f:
+        # Output file format: data+date+time.hdf5
+        with h5py.File(self.save_hdf5_file_name, 'w') as f:
             f.attrs['sim'] = True
             obs = f.create_group('observations')
             act = f.create_group('actions')
