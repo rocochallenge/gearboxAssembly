@@ -91,6 +91,12 @@ The **gearbox part models (`.usd` files)** within this repository are managed us
     python scripts/rule_based_agent.py --task=Template-Galaxea-Lab-External-Direct-v0 --enable_cameras
     ```
 
+- **Running the R1 gearbox assembly task with ACT agent**
+    ```bash
+    # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
+    python scripts/VLA_agent.py --task=Template-Galaxea-Lab-Agent-Direct-v0 --enable_cameras --checkpoint='Your-VLA-Checkpoint-File-Path'
+    ```
+
 ### Set up IDE (Optional)
 
 To setup the IDE, please follow these instructions:

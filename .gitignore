@@ -73,3 +73,6 @@ tests/
 # Saved data
 data/*
 log
+
+# Training model
+ckpt

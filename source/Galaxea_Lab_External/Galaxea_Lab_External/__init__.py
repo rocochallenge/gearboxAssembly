@@ -30,3 +30,5 @@ from .tasks import *
 from .ui_extension_example import *
 
 from .robots import *
+
+from .VLA import *

@@ -36,11 +36,11 @@ from Galaxea_Lab_External.robots import (
 )
 
 @configclass
-class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
+class GalaxeaLabAgentEnvCfg(DirectRLEnvCfg):
 
     # Record data
-    record_data = True
-    record_freq = 5
+    # record_data = True
+    # record_freq = 5
 
     # env
     sim_dt = 0.01
