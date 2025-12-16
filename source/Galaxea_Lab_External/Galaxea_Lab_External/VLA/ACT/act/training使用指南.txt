@@ -1,0 +1,23 @@
+转换h5代码为/media/mldadmin/home/s123mdg31_14/act/scripts/merge.py
+具体使用方法代码中有详细说明
+训练代码:
+conda activate aloha
+cd /home/zhou0484/roco/act
+python3 imitate_episodes.py --task_name  sim_gearbox_assembly_demos_filtered  --ckpt_dir /media/mldadmin/home/s123mdg31_14/act/ckpt/20251209  --policy_class ACT --kl_weight 10 --chunk_size 100 --hidden_dim 512 --batch_size 1 --dim_feedforward 3200 --num_epochs 2000 --lr 1e-5 --seed 0
+
+####1. episodes无法为1，初步断定为需要复数数据集进行训练集与val的拆分
+    2.三个摄像头的图像分辨率需相同，分辨率无固定要求
+    3.原数据集无夹爪速度，夹爪速度根据算法计算而得具体,相关算法于merge_actions.py213行起（25.11.6版本202512.9已弃用）
+    4./home/zhou0484/roco/datasets/sim_transfer_cube_scripted/episode_0.hdf5
+    /media/mldadmin/home/s123mdg31_14/act/datasets/sim_transfer_cube_scripted此为官方数据
+    5.使用显卡为默认的cuda0，当前代码不支持多gpu训练，如需指定gpu可通过设置环境变量或更改训练代码
+    6.constant.py中添加
+    
+    'sim_gearbox_assembly_demos_filtered': {
+        'dataset_dir': DATA_DIR + '/gearbox_assembly_demos_filtered',
+        'num_episodes': 57,
+        'episode_len': 664,
+        'camera_names': ['head_rgb','left_hand_rgb','right_hand_rgb']
+    },
+    *****其中episode_len为h5中时间长度，暂不确定有复数数据时是否能够用不同的时间长度进行训练****
+    7.
