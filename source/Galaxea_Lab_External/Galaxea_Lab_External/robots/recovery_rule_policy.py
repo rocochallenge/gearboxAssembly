@@ -589,7 +589,7 @@ class RecoveryRulePolicy:
         
         # For misplaced_fourth_gear state, preserve actual Z position of stacked gear
         if self.initial_assembly_state == "misplaced_fourth_gear" and gear_id == 4:
-            target_position[:, 2] = root_state[:, 2] -0.012 + self.grasping_height + obj_height_offset
+            target_position[:, 2] = root_state[:, 2] + obj_height_offset - 0.01
         else:
             target_position[:, 2] = self.table_height + self.grasping_height + obj_height_offset
             

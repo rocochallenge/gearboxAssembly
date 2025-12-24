@@ -30,3 +30,12 @@ gym.register(
         "initial_assembly_state": "misplaced_fourth_gear",
     },
 )
+gym.register(
+    id="Gearbox-Recovery-Inclinedfourth",
+    entry_point=f"{__name__}.gearbox_recovery_env:GalaxeaLabExternalEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.gearbox_recovery_env_cfg:GalaxeaLabExternalEnvCfg",
+        "initial_assembly_state": "inclined_fourth_gear",
+    },
+)

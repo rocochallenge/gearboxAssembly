@@ -39,14 +39,18 @@ import h5py
 class GalaxeaLabExternalEnv(DirectRLEnv):
     cfg: GalaxeaLabExternalEnvCfg
 
-    def __init__(self, cfg: GalaxeaLabExternalEnvCfg, render_mode: str | None = None, initial_assembly_state: str | None = None, **kwargs):
+    def __init__(self, cfg: GalaxeaLabExternalEnvCfg, render_mode: str | None = None, initial_assembly_state: str | None = None, use_action: bool = True, **kwargs):
         if initial_assembly_state is not None:
             cfg.initial_assembly_state = initial_assembly_state
+        
+        # Store use_action parameter
+        self.use_action = use_action
         
         super().__init__(cfg, render_mode, **kwargs)
 
         print(f"--------------------------------INIT--------------------------------")
         print(f"Initial assembly state: {cfg.initial_assembly_state}")
+        print(f"Use action: {self.use_action}")
 
         self._left_arm_joint_idx, _ = self.robot.find_joints(self.cfg.left_arm_joint_dof_name)
         self._right_arm_joint_idx, _ = self.robot.find_joints(self.cfg.right_arm_joint_dof_name)
@@ -199,7 +203,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         joint_ids = self.env_step_joint_ids
         # print(f"action: {action.item()}")
 
-        if joint_ids is not None:
+        # Apply action only if use_action is True
+        if self.use_action and joint_ids is not None:
             self.robot.set_joint_position_target(action, joint_ids=joint_ids)
 
         self.rule_policy.count += 1
@@ -672,6 +677,73 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         
         return {'sun_planetary_gear_4': gear_root_state.clone()}
 
+    def _set_inclined_fourth_gear(self) -> dict:
+        """Set fourth gear inclined at 45 degrees around a random horizontal axis.
+        The gear is positioned at the planetary carrier's center (target assembly position).
+        
+        Returns:
+            Dictionary containing root state of the inclined fourth gear.
+        """
+        num_envs = self.scene.num_envs
+        
+        # Get planetary carrier current world position from simulation
+        carrier_root_state = self.planetary_carrier.data.root_state_w.clone()
+        carrier_pos = carrier_root_state[:, :3]
+        
+        # Create root state for fourth gear
+        gear_root_state = torch.zeros((num_envs, 13), device=self.device)
+        
+        # Gear height offset for assembly (same as in _set_three_assembled_gears)
+        gear_height_offset = 0.05
+        
+        for env_idx in range(num_envs):
+            # Position at carrier center (xy) with assembly height (z)
+            # Fourth pin position (center of carrier)
+            pin_local_pos = torch.tensor([0.0, 0.0, 0.0], device=self.device)
+            carrier_quat = carrier_root_state[env_idx, 3:7]
+            
+            # Calculate world position of center pin
+            pin_world_pos = carrier_pos[env_idx] + pin_local_pos
+            gear_world_pos = pin_world_pos.clone()
+            gear_world_pos[2] += gear_height_offset
+            
+            x = gear_world_pos[0].item()
+            y = gear_world_pos[1].item()
+            z = gear_world_pos[2].item()
+            
+            # Create 45 degree tilt around a random horizontal axis
+            # Random angle in xy plane for the tilt axis direction
+            random_angle = torch.rand(1, device=self.device).item() * 2 * math.pi
+            
+            # Tilt axis in xy plane (perpendicular to z)
+            tilt_axis_x = math.cos(random_angle)
+            tilt_axis_y = math.sin(random_angle)
+            tilt_axis_z = 0.0
+            
+            # Create quaternion for 45 degree rotation around this axis
+            tilt_angle = 45.0 * math.pi / 180.0  # 45 degrees in radians
+            half_angle = tilt_angle / 2.0
+            
+            # Quaternion: [w, x, y, z]
+            qw = math.cos(half_angle)
+            qx = tilt_axis_x * math.sin(half_angle)
+            qy = tilt_axis_y * math.sin(half_angle)
+            qz = tilt_axis_z * math.sin(half_angle)
+            
+            gear_world_quat = torch.tensor([qw, qx, qy, qz], device=self.device)
+            
+            # Assign to root state
+            gear_root_state[env_idx, :3] = gear_world_pos
+            gear_root_state[env_idx, 3:7] = gear_world_quat
+            
+            print(f"[INFO] Env {env_idx}: sun_planetary_gear_4 inclined at 45° around axis ({tilt_axis_x:.3f}, {tilt_axis_y:.3f}, {tilt_axis_z:.3f})")
+            print(f"       Position: {gear_world_pos}, Orientation: {gear_world_quat}")
+        
+        # Write to simulation
+        self.sun_planetary_gear_4.write_root_state_to_sim(gear_root_state)
+        
+        return {'sun_planetary_gear_4': gear_root_state.clone()}
+
     def _reset_idx(self, env_ids: Sequence[int] | None):
         print(f"--------------------------------RESET--------------------------------")
         if env_ids is None:
@@ -736,6 +808,18 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             # Set fourth gear stacked on one of the first three gears
             misplaced_gear_state = self._set_misplaced_fourth_gear()
             self.initial_root_state.update(misplaced_gear_state)
+        elif self.cfg.initial_assembly_state == "inclined_fourth_gear":
+            # Randomize carrier and other objects on table (without fourth gear)
+            self.initial_root_state = self._randomize_object_positions(
+                [self.planetary_carrier, self.ring_gear, self.planetary_reducer], 
+                ['planetary_carrier', 'ring_gear', 'planetary_reducer']
+            )
+            # Assemble three gears on carrier
+            assembled_gears_state = self._set_three_assembled_gears()
+            self.initial_root_state.update(assembled_gears_state)
+            # Set fourth gear inclined at 45 degrees
+            inclined_gear_state = self._set_inclined_fourth_gear()
+            self.initial_root_state.update(inclined_gear_state)
         else:
             # Default: all objects randomly placed on table
             self.initial_root_state = self._randomize_object_positions(
