@@ -4,6 +4,9 @@ Code Repository for the [RoCo Challenge@AAAI 2026](https://rocochallenge.github.
 
 The Gearbox Assembly Assistance Challenge evaluates bimanual robotic systems in collaborative gearbox assembly within manufacturing environments. It targets scenarios where robots work seamlessly with human operators.
 
+#### ⭐🎄 News 24 Dec 2025:
+Merry Christmas! We added 3 new environment definitions for task 2 (resume from partial state) and task 3 (error detection and recovery), serving as environment settings for the final examination, and also to facilitate your self-evaluation of your own models. Please check out the quickstart commands [here](#run-the-rule-based-agent).
+
 ## Overview
 
 In this project, we setup a Isaac Lab environment for the Galaxea R1 gearbox assembly task. 
@@ -85,6 +88,8 @@ The **gearbox part models (`.usd` files)** within this repository are managed us
             # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
             python scripts/random_agent.py --task=<TASK_NAME>
 
+### Run the rule-based agent
+
 - **Running the R1 gearbox assembly task with rule-based agent**
     ```bash
     # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
@@ -95,6 +100,23 @@ The **gearbox part models (`.usd` files)** within this repository are managed us
     ```bash
     # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
     python scripts/VLA_agent.py --task=Template-Galaxea-Lab-Agent-Direct-v0 --enable_cameras --checkpoint='Your-VLA-Checkpoint-File-Path'
+    ```
+
+- **Running the R1 gearbox assembly recovery tasks with rule-based agent (task 2 and 3 in the challenge setting)**
+    
+    We defined 3 different environments for task 2 and 3, where:
+
+    The fourth gear (sun gear) is not yet installed, for task 2.
+    ```bash
+    python scripts/rule_based_agent.py --task=Gearbox-Partial-Lackfourth --enable_cameras
+    ```
+    The fourth gear is placed on top of one installed gear by mistake, for task 3.
+    ```bash
+    python scripts/rule_based_agent.py --task=Gearbox-Recovery-Misplacedfourth --enable_cameras
+    ```
+    The fourth gear is inclined during installation, for task 3. Rule-based agent do not perform well in this setting, and thus not provided yet. Use --no_action flag to diable actions when checking out the environment.
+    ```bash
+    python scripts/rule_based_agent.py --task=Gearbox-Recovery-Inclinedfourth --enable_cameras --no_action
     ```
 
 ### Set up IDE (Optional)

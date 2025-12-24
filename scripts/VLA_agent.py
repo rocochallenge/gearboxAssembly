@@ -75,28 +75,21 @@ def main():
     print(f"[INFO]: Gym observation space: {env.observation_space}")
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
-    env.reset()
+    obs, _ = env.reset()
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
-            # sample actions from -1 to 1
-            actions = 2 * torch.rand(env.action_space.shape, device=env.unwrapped.device) - 1
-            # apply actions
-            obs, reward, terminated, truncated, info = env.step(actions)
-            # print(f"obs: {obs}")
+            # Extract observations from current state
             left_arm_joint_pos = obs['policy']['left_arm_joint_pos']
             right_arm_joint_pos = obs['policy']['right_arm_joint_pos']
             left_gripper_joint_pos = obs['policy']['left_gripper_joint_pos']
             right_gripper_joint_pos = obs['policy']['right_gripper_joint_pos']
-            qpos = torch.cat([left_arm_joint_pos, right_arm_joint_pos, left_gripper_joint_pos.unsqueeze(0), right_gripper_joint_pos.unsqueeze(0)], dim=-1)
+            qpos = torch.cat([left_arm_joint_pos, left_gripper_joint_pos.unsqueeze(0), right_arm_joint_pos, right_gripper_joint_pos.unsqueeze(0)], dim=-1)
 
             head_rgb = obs['policy']['head_rgb'].unsqueeze(0).permute(0, 1, 4, 2, 3)
             left_hand_rgb = obs['policy']['left_hand_rgb'].unsqueeze(0).permute(0, 1, 4, 2, 3)
             right_hand_rgb = obs['policy']['right_hand_rgb'].unsqueeze(0).permute(0, 1, 4, 2, 3)
-            # print(f"left_hand_rgb shape: {left_hand_rgb.shape}")
-            # print(f"right_hand_rgb shape: {right_hand_rgb.shape}")
-            # print(f"head_rgb shape: {head_rgb.shape}")
 
             images = torch.cat([head_rgb, left_hand_rgb, right_hand_rgb], dim=1)
             # Change dtype of images to float32
@@ -105,17 +98,25 @@ def main():
             # Print shape of qpos and images
             print(f"qpos shape: {qpos.shape}")
             print(f"images shape: {images.shape}")
-            # exit()
             
+            # Predict action using VLA policy
             action = policy.predict(qpos, images)
-            print(f"action: {action}")
-            # exit()
+            action_reordered = torch.cat([
+                action[:, :6],    # L_arm
+                action[:, 7:13],  # R_arm
+                action[:, 6:7],   # L_grip
+                action[:, 13:14]  # R_grip
+            ], dim=-1)
+            print(f"VLA predicted action: {action_reordered}")
+
+            # Apply VLA predicted action to environment (only once per loop)
+            obs, reward, terminated, truncated, info = env.step(action_reordered)
 
             print(f"Terminated: {terminated}")
             print(f"Truncated: {truncated}")
-            env.step(actions)
+            
             if terminated or truncated:
-                env.reset()
+                obs, _ = env.reset()
 
     # close the simulator
     env.close()

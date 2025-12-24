@@ -21,7 +21,7 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import sample_uniform, euler_xyz_from_quat
 
-from .galaxea_lab_external_env_cfg import GalaxeaLabExternalEnvCfg
+from .gearbox_recovery_env_cfg import GalaxeaLabExternalEnvCfg
 
 from pxr import Usd, Sdf, UsdPhysics, UsdGeom, Gf
 from isaaclab.sim.spawners.materials import physics_materials, physics_materials_cfg
@@ -31,7 +31,7 @@ import isaaclab.envs.mdp as mdp
 
 import isaacsim.core.utils.torch as torch_utils
 
-from Galaxea_Lab_External.robots import GalaxeaRulePolicy
+from Galaxea_Lab_External.robots import RecoveryRulePolicy
 from isaaclab.sensors import Camera
 
 import h5py
@@ -39,10 +39,18 @@ import h5py
 class GalaxeaLabExternalEnv(DirectRLEnv):
     cfg: GalaxeaLabExternalEnvCfg
 
-    def __init__(self, cfg: GalaxeaLabExternalEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: GalaxeaLabExternalEnvCfg, render_mode: str | None = None, initial_assembly_state: str | None = None, use_action: bool = True, **kwargs):
+        if initial_assembly_state is not None:
+            cfg.initial_assembly_state = initial_assembly_state
+        
+        # Store use_action parameter
+        self.use_action = use_action
+        
         super().__init__(cfg, render_mode, **kwargs)
 
         print(f"--------------------------------INIT--------------------------------")
+        print(f"Initial assembly state: {cfg.initial_assembly_state}")
+        print(f"Use action: {self.use_action}")
 
         self._left_arm_joint_idx, _ = self.robot.find_joints(self.cfg.left_arm_joint_dof_name)
         self._right_arm_joint_idx, _ = self.robot.find_joints(self.cfg.right_arm_joint_dof_name)
@@ -195,7 +203,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         joint_ids = self.env_step_joint_ids
         # print(f"action: {action.item()}")
 
-        if joint_ids is not None:
+        # Apply action only if use_action is True
+        if self.use_action and joint_ids is not None:
             self.robot.set_joint_position_target(action, joint_ids=joint_ids)
 
         self.rule_policy.count += 1
@@ -563,8 +572,177 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         return initial_root_state
 
+    def _set_three_assembled_gears(self) -> dict:
+        """
+        Set initial positions for three gears already assembled on the planetary carrier.
+        Uses carrier's current simulation state (not default).
+        
+        Returns:
+            Dictionary containing root states of the three assembled gears.
+        """
+        # Get planetary carrier current world position and orientation from simulation
+        carrier_root_state = self.planetary_carrier.data.root_state_w.clone()
+        carrier_pos = carrier_root_state[:, :3]
+        carrier_quat = carrier_root_state[:, 3:7]
+        
+        num_envs = carrier_pos.shape[0]
+        
+        # Gear height offset relative to carrier pin position
+        gear_height_offset = 0.011  # Approximate gear thickness mounted on pin
+        
+        # Create initial root state dictionary
+        assembled_gears_state = {}
+        
+        # Assemble first three gears to first three pins
+        gear_names = ['sun_planetary_gear_1', 'sun_planetary_gear_2', 'sun_planetary_gear_3']
+        
+        for gear_idx, gear_name in enumerate(gear_names):
+            # Get corresponding pin local position
+            pin_local_pos = self.pin_local_positions[gear_idx]
+            pin_local_pos_batch = pin_local_pos.unsqueeze(0).expand(num_envs, -1)
+            
+            # Pin orientation same as carrier
+            pin_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(num_envs, -1)
+            
+            # Transform pin local position to world coordinates
+            pin_world_quat, pin_world_pos = torch_utils.tf_combine(
+                carrier_quat, carrier_pos, pin_quat, pin_local_pos_batch
+            )
+            
+            # Apply height offset for gear position on pin
+            gear_world_pos = pin_world_pos.clone()
+            gear_world_pos[:, 2] += gear_height_offset
+            
+            # Gear orientation same as carrier
+            gear_world_quat = carrier_quat.clone()
+            
+            # Create root state for this gear
+            gear_root_state = torch.zeros((num_envs, 13), device=self.device)
+            gear_root_state[:, :3] = gear_world_pos
+            gear_root_state[:, 3:7] = gear_world_quat
+            
+            # Write to simulation
+            gear_obj = getattr(self, gear_name)
+            gear_obj.write_root_state_to_sim(gear_root_state)
+            
+            # Store in dictionary
+            assembled_gears_state[gear_name] = gear_root_state.clone()
+            
+            print(f"[INFO] {gear_name} assembled to pin_{gear_idx}")
+            print(f"       Position: {gear_world_pos[0]}, Orientation: {gear_world_quat[0]}")
+        
+        return assembled_gears_state
 
+    def _set_misplaced_fourth_gear(self) -> dict:
+        """Set fourth gear stacked on top of one of the first three assembled gears randomly.
+        
+        Returns:
+            Dictionary containing root state of the misplaced fourth gear.
+        """
+        num_envs = self.scene.num_envs
+        
+        # Randomly select one of the first three gears to stack on
+        gear_names = ['sun_planetary_gear_1', 'sun_planetary_gear_2', 'sun_planetary_gear_3']
+        selected_gear_idx = torch.randint(0, 3, (num_envs,), device=self.device)
+        
+        # Height offset for stacking (approximate gear thickness)
+        stack_height_offset = 0.02  # 2cm above the selected gear
+        
+        # Create root state for fourth gear
+        gear_root_state = torch.zeros((num_envs, 13), device=self.device)
+        
+        for env_idx in range(num_envs):
+            # Get the selected gear's position and orientation
+            selected_gear_name = gear_names[selected_gear_idx[env_idx]]
+            selected_gear_obj = getattr(self, selected_gear_name)
+            selected_gear_pos = selected_gear_obj.data.root_state_w[env_idx, :3].clone()
+            selected_gear_quat = selected_gear_obj.data.root_state_w[env_idx, 3:7].clone()
+            
+            # Fourth gear position: directly above selected gear
+            gear_world_pos = selected_gear_pos.clone()
+            gear_world_pos[2] += stack_height_offset
+            
+            # Fourth gear orientation: same as selected gear
+            gear_world_quat = selected_gear_quat.clone()
+            
+            # Assign to root state
+            gear_root_state[env_idx, :3] = gear_world_pos
+            gear_root_state[env_idx, 3:7] = gear_world_quat
+            
+            print(f"[INFO] Env {env_idx}: sun_planetary_gear_4 stacked on {selected_gear_name}")
+            print(f"       Position: {gear_world_pos}, Orientation: {gear_world_quat}")
+        
+        # Write to simulation
+        self.sun_planetary_gear_4.write_root_state_to_sim(gear_root_state)
+        
+        return {'sun_planetary_gear_4': gear_root_state.clone()}
 
+    def _set_inclined_fourth_gear(self) -> dict:
+        """Set fourth gear inclined at 45 degrees around a random horizontal axis.
+        The gear is positioned at the planetary carrier's center (target assembly position).
+        
+        Returns:
+            Dictionary containing root state of the inclined fourth gear.
+        """
+        num_envs = self.scene.num_envs
+        
+        # Get planetary carrier current world position from simulation
+        carrier_root_state = self.planetary_carrier.data.root_state_w.clone()
+        carrier_pos = carrier_root_state[:, :3]
+        
+        # Create root state for fourth gear
+        gear_root_state = torch.zeros((num_envs, 13), device=self.device)
+        
+        # Gear height offset for assembly (same as in _set_three_assembled_gears)
+        gear_height_offset = 0.05
+        
+        for env_idx in range(num_envs):
+            # Position at carrier center (xy) with assembly height (z)
+            # Fourth pin position (center of carrier)
+            pin_local_pos = torch.tensor([0.0, 0.0, 0.0], device=self.device)
+            carrier_quat = carrier_root_state[env_idx, 3:7]
+            
+            # Calculate world position of center pin
+            pin_world_pos = carrier_pos[env_idx] + pin_local_pos
+            gear_world_pos = pin_world_pos.clone()
+            gear_world_pos[2] += gear_height_offset
+            
+            x = gear_world_pos[0].item()
+            y = gear_world_pos[1].item()
+            z = gear_world_pos[2].item()
+            
+            # Create 45 degree tilt around a random horizontal axis
+            # Random angle in xy plane for the tilt axis direction
+            random_angle = torch.rand(1, device=self.device).item() * 2 * math.pi
+            
+            # Tilt axis in xy plane (perpendicular to z)
+            tilt_axis_x = math.cos(random_angle)
+            tilt_axis_y = math.sin(random_angle)
+            tilt_axis_z = 0.0
+            
+            # Create quaternion for 45 degree rotation around this axis
+            tilt_angle = 45.0 * math.pi / 180.0  # 45 degrees in radians
+            half_angle = tilt_angle / 2.0
+            
+            # Quaternion: [w, x, y, z]
+            qw = math.cos(half_angle)
+            qx = tilt_axis_x * math.sin(half_angle)
+            qy = tilt_axis_y * math.sin(half_angle)
+            qz = tilt_axis_z * math.sin(half_angle)
+            
+            gear_world_quat = torch.tensor([qw, qx, qy, qz], device=self.device)
+            
+            # Assign to root state
+            gear_root_state[env_idx, :3] = gear_world_pos
+            gear_root_state[env_idx, 3:7] = gear_world_quat
+            
+            print(f"[INFO] Env {env_idx}: sun_planetary_gear_4 inclined at 45° around axis ({tilt_axis_x:.3f}, {tilt_axis_y:.3f}, {tilt_axis_z:.3f})")
+            print(f"       Position: {gear_world_pos}, Orientation: {gear_world_quat}")
+        
+        # Write to simulation
+        self.sun_planetary_gear_4.write_root_state_to_sim(gear_root_state)
+        
+        return {'sun_planetary_gear_4': gear_root_state.clone()}
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         print(f"--------------------------------RESET--------------------------------")
@@ -572,7 +750,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             env_ids = self.robot._ALL_INDICES
         super()._reset_idx(env_ids)
 
-        self.rule_policy = GalaxeaRulePolicy(sim_utils.SimulationContext.instance(), self.scene, self.obj_dict)
+        self.rule_policy = RecoveryRulePolicy(sim_utils.SimulationContext.instance(), self.scene, self.obj_dict, self.cfg.initial_assembly_state)
         self.initial_root_state = None
 
         self.env_step_action = None
@@ -606,18 +784,54 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         root_state = self.table.data.default_root_state.clone()
         self.table.write_root_state_to_sim(root_state)
+        self.save_hdf5_file_name = '../data/data_recovery_' + datetime.now().strftime("%Y%m%d_%H%M%S") + '.hdf5'
 
-       
-        self.save_hdf5_file_name = '../data/data_' + datetime.now().strftime("%Y%m%d_%H%M%S") + '.hdf5'
-
-
-        self.initial_root_state = self._randomize_object_positions([self.planetary_carrier, self.ring_gear, 
-                                        self.sun_planetary_gear_1, self.sun_planetary_gear_2,
-                                        self.sun_planetary_gear_3, self.sun_planetary_gear_4,
-                                        self.planetary_reducer], ['planetary_carrier', 'ring_gear', 
-                                        'sun_planetary_gear_1', 'sun_planetary_gear_2',
-                                        'sun_planetary_gear_3', 'sun_planetary_gear_4',
-                                        'planetary_reducer'])
+        # Initialize objects based on assembly state
+        if self.cfg.initial_assembly_state == "lack_fourth_gear":
+            # First randomize carrier and other objects on table
+            self.initial_root_state = self._randomize_object_positions(
+                [self.planetary_carrier, self.ring_gear, self.sun_planetary_gear_4, self.planetary_reducer], 
+                ['planetary_carrier', 'ring_gear', 'sun_planetary_gear_4', 'planetary_reducer']
+            )
+            # Then assemble three gears on carrier (using carrier's actual position)
+            assembled_gears_state = self._set_three_assembled_gears()
+            self.initial_root_state.update(assembled_gears_state)
+        elif self.cfg.initial_assembly_state == "misplaced_fourth_gear":
+            # Randomize carrier and other objects on table (without fourth gear)
+            self.initial_root_state = self._randomize_object_positions(
+                [self.planetary_carrier, self.ring_gear, self.planetary_reducer], 
+                ['planetary_carrier', 'ring_gear', 'planetary_reducer']
+            )
+            # Assemble three gears on carrier
+            assembled_gears_state = self._set_three_assembled_gears()
+            self.initial_root_state.update(assembled_gears_state)
+            # Set fourth gear stacked on one of the first three gears
+            misplaced_gear_state = self._set_misplaced_fourth_gear()
+            self.initial_root_state.update(misplaced_gear_state)
+        elif self.cfg.initial_assembly_state == "inclined_fourth_gear":
+            # Randomize carrier and other objects on table (without fourth gear)
+            self.initial_root_state = self._randomize_object_positions(
+                [self.planetary_carrier, self.ring_gear, self.planetary_reducer], 
+                ['planetary_carrier', 'ring_gear', 'planetary_reducer']
+            )
+            # Assemble three gears on carrier
+            assembled_gears_state = self._set_three_assembled_gears()
+            self.initial_root_state.update(assembled_gears_state)
+            # Set fourth gear inclined at 45 degrees
+            inclined_gear_state = self._set_inclined_fourth_gear()
+            self.initial_root_state.update(inclined_gear_state)
+        else:
+            # Default: all objects randomly placed on table
+            self.initial_root_state = self._randomize_object_positions(
+                [self.planetary_carrier, self.ring_gear, 
+                 self.sun_planetary_gear_1, self.sun_planetary_gear_2,
+                 self.sun_planetary_gear_3, self.sun_planetary_gear_4,
+                 self.planetary_reducer], 
+                ['planetary_carrier', 'ring_gear', 
+                 'sun_planetary_gear_1', 'sun_planetary_gear_2',
+                 'sun_planetary_gear_3', 'sun_planetary_gear_4',
+                 'planetary_reducer']
+            )
         
         for obj_name, obj in self.obj_dict.items():
             obj.update(self.sim.get_physics_dt())
@@ -658,115 +872,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_joint3_pos, self.cfg.initial_torso_joint3_pos], device=self.device), self._torso_joint3_idx, env_ids)
 
 
-        # self.head_camera.reset(env_ids)
 
-
-    # def step(self, actions):
-    #     # print(f"RL step: {self.rule_policy.count * self.sim.get_physics_dt()} seconds")
-    #     current_time_s = mdp.observations.current_time_s(self)
-    #     print(f"--------------------------------RL step at {current_time_s.item()} seconds--------------------------------")
-    #     print(f"Generate action at {current_time_s.item()} seconds")
-    #     self.env_step_action, self.env_step_joint_ids = self.rule_policy.get_action()
-    #     print(f"####################################################Before step####################################################")
-    #     obs, reward, terminated, truncated, info = super().step(actions)
-
-    #     if terminated or truncated:
-    #         # Write data to hdf5 file
-    #         # Output file format: data+date+time.hdf5
-    #         print(f"Writing data to hdf5 file")
-    #         with h5py.File(self.save_hdf5_file_name, 'w') as f:
-    #             f.attrs['sim'] = True
-    #             obs = f.create_group('observations')
-    #             act = f.create_group('actions')
-    #             num_items = len(self.data_dict['/observations/head_rgb'])
-    #             obs.create_dataset('head_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-    #             obs.create_dataset('left_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-    #             obs.create_dataset('right_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-    #             obs.create_dataset('head_depth', shape=(num_items, 240, 320), dtype='float32')
-    #             obs.create_dataset('left_hand_depth', shape=(num_items, 240, 320), dtype='float32')
-    #             obs.create_dataset('right_hand_depth', shape=(num_items, 240, 320), dtype='float32')
-    #             obs.create_dataset('left_arm_joint_pos', shape=(num_items, 6), dtype='float32')
-    #             obs.create_dataset('right_arm_joint_pos', shape=(num_items, 6), dtype='float32')
-    #             obs.create_dataset('left_gripper_joint_pos', shape=(num_items, ), dtype='float32')
-    #             obs.create_dataset('right_gripper_joint_pos', shape=(num_items, ), dtype='float32')
-    #             obs.create_dataset('left_arm_joint_vel', shape=(num_items, 6), dtype='float32')
-    #             obs.create_dataset('right_arm_joint_vel', shape=(num_items, 6), dtype='float32')
-    #             obs.create_dataset('left_gripper_joint_vel', shape=(num_items, ), dtype='float32')
-    #             obs.create_dataset('right_gripper_joint_vel', shape=(num_items, ), dtype='float32')
-    #             act.create_dataset('left_arm_action', shape=(num_items, 6), dtype='float32')
-    #             act.create_dataset('right_arm_action', shape=(num_items, 6), dtype='float32')
-    #             act.create_dataset('left_gripper_action', shape=(num_items, ), dtype='float32')
-    #             act.create_dataset('right_gripper_action', shape=(num_items, ), dtype='float32')
-                
-    #             f.create_dataset('score', shape=(num_items,), dtype='int32')
-    #             f.create_dataset('current_time', shape=(num_items,), dtype='float32')
-    #             # f.create_dataset('time_cost', data=self.time_cost)
-
-    #             for name, value in self.data_dict.items():
-    #                 # print(f"Writing {name} to hdf5 file with value: {value}")
-    #                 f[name][...] = value
-
-    #         # self.obs = dict()
-    #         # self.act = dict()
-    #         self.data_dict = {
-    #             '/observations/head_rgb': [],
-    #             '/observations/left_hand_rgb': [],
-    #             '/observations/right_hand_rgb': [],
-    #             '/observations/head_depth': [],
-    #             '/observations/left_hand_depth': [],
-    #             '/observations/right_hand_depth': [],
-    #             '/observations/left_arm_joint_pos': [],
-    #             '/observations/right_arm_joint_pos': [],
-    #             '/observations/left_gripper_joint_pos': [],
-    #             '/observations/right_gripper_joint_pos': [],
-    #             '/observations/left_arm_joint_vel': [],
-    #             '/observations/right_arm_joint_vel': [],
-    #             '/observations/left_gripper_joint_vel': [],
-    #             '/observations/right_gripper_joint_vel': [],
-    #             '/actions/left_arm_action': [],
-    #             '/actions/right_arm_action': [],
-    #             '/actions/left_gripper_action': [],
-    #             '/actions/right_gripper_action': [],
-    #             '/score': [],
-    #             '/current_time': [],
-    #         }
-                    
-    #     print(f"####################################################After step####################################################")
-
-    #     current_pos = self.robot.data.joint_pos
-
-    #     self._left_arm_action = current_pos[:, self._left_arm_joint_idx]
-    #     self._right_arm_action = current_pos[:, self._right_arm_joint_idx]
-    #     self._left_gripper_action = current_pos[:, self._left_gripper_dof_idx[0]]
-    #     self._right_gripper_action = current_pos[:, self._right_gripper_dof_idx[0]]
-
-    #     print(f"!!!env_step_action: {self.env_step_action}")
-    #     print(f"!!!env_step_joint_ids: {self.env_step_joint_ids}")
-        
-    #     if self.env_step_joint_ids == self._left_arm_joint_idx:
-    #         self._left_arm_action = self.env_step_action.clone()
-    #     elif self.env_step_joint_ids == self._right_arm_joint_idx:
-    #         self._right_arm_action = self.env_step_action.clone()
-    #     elif self.env_step_joint_ids == self._left_arm_joint_idx + self._right_arm_joint_idx:
-    #         self._left_arm_action = self.env_step_action.clone()[:, :6]
-    #         self._right_arm_action = self.env_step_action.clone()[:, 6:12]
-    #     elif self.env_step_joint_ids == self._left_gripper_dof_idx:
-    #         self._left_gripper_action = self.env_step_action[0].clone()
-    #     elif self.env_step_joint_ids == self._right_gripper_dof_idx:
-    #         self._right_gripper_action = self.env_step_action[0].clone()
-    #     self.act = dict(left_arm_action=self._left_arm_action, right_arm_action=self._right_arm_action,
-    #         left_gripper_action=self._left_gripper_action, right_gripper_action=self._right_gripper_action)
-
-
-    #     print(f"left_arm_action: {self.act['left_arm_action']}")
-    #     print(f"right_arm_action: {self.act['right_arm_action']}")
-    #     # print(f"left_gripper_action: {self.act['left_gripper_action']}")
-    #     # print(f"right_gripper_action: {self.act['right_gripper_action']}")
-
-    #     if self.cfg.record_data and (self.rule_policy.count % self.cfg.record_freq == 0):
-    #         self._record_data()
-
-    #     return obs, reward, terminated, truncated, info
 
     def step(self, action: torch.Tensor):
         """Execute one time-step of the environment's dynamics.
