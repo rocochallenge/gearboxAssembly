@@ -31,7 +31,7 @@ import isaaclab.envs.mdp as mdp
 
 import isaacsim.core.utils.torch as torch_utils
 
-from Galaxea_Lab_External.robots import RecoveryRulePolicy
+# Rule-policy class is read from cfg (see ACTIVE_ROBOT_BUNDLE.recovery_rule_policy_class).
 from isaaclab.sensors import Camera
 
 import h5py
@@ -750,7 +750,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             env_ids = self.robot._ALL_INDICES
         super()._reset_idx(env_ids)
 
-        self.rule_policy = RecoveryRulePolicy(sim_utils.SimulationContext.instance(), self.scene, self.obj_dict, self.cfg.initial_assembly_state)
+        self.rule_policy = self.cfg.rule_policy_class(sim_utils.SimulationContext.instance(), self.scene, self.obj_dict, self.cfg.initial_assembly_state)
         self.initial_root_state = None
 
         self.env_step_action = None
