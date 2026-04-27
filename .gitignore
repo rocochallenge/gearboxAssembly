@@ -22,6 +22,10 @@
 **/*.pyc
 **/*.pb
 
+# uv / venv
+.venv/
+
+
 # Docker/Singularity
 **/*.sif
 docker/cluster/exports/
@@ -33,6 +37,11 @@ docker/.container.cfg
 # Don't ignore the top-level .vscode directory as it is
 # used to configure VS Code settings
 !.vscode
+# VS Code C/C++ IntelliSense browse cache (binary SQLite db, machine-local)
+.vscode/browse.vc.db*
+
+# uv cache hints (the venv itself is already ignored above)
+.uv-cache/
 
 # Outputs
 **/output/*

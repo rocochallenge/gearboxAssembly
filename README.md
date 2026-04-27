@@ -48,16 +48,113 @@ The **gearbox part models (`.usd` files)** within this repository are managed us
 
 ---
 ### Installation Steps
-- Install Isaac Lab 2.3.0 with Isaac Sim 5.0.0 by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
-  We recommend using the conda installation as it simplifies calling Python scripts from the terminal.
 
-- Clone or copy this project/repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
+This project uses [uv](https://docs.astral.sh/uv/) to manage a project-local `.venv` that pulls in Isaac Lab 2.3.0 (as a git submodule) and its dependencies. Isaac Sim 5.1.0 itself is provided either by a locally installed binary (recommended — no multi-GB pip download) **or** by a pip package. Both options are documented below.
 
-- Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
+#### Prerequisites
+- x86-64 Linux, a GPU/driver compatible with Isaac Sim 5.1 ([requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements))
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Git + Git LFS (see the previous section)
+- Python 3.11 (uv will fetch it automatically if missing)
+
+#### Clone with submodules
+
+```bash
+git clone --recursive <this-repo-url> gearboxAssembly
+cd gearboxAssembly
+# or, if you already cloned without --recursive:
+git submodule update --init --recursive
+git lfs pull
+```
+
+The `IsaacLab/` directory is a submodule pinned to tag `v2.3.0`.
+
+---
+
+#### Option A — Binary Isaac Sim 5.1.0 (recommended)
+
+Best if you already have (or are willing to install) the Isaac Sim 5.1.0 binary tarball. It avoids pip-downloading ~10 GB of isaacsim wheels into the venv.
+
+1. **Download Isaac Sim 5.1.0** from NVIDIA's [Omniverse Launcher](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) (or unpack a tarball). Note its install directory; the examples below assume `/home/liuj/isaac-sim-5.1`.
+
+2. **Link Isaac Lab to the binary install** (IsaacLab expects a `_isaac_sim` entry pointing at the Kit runtime):
 
     ```bash
-    # use 'PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-    python -m pip install -e source/Galaxea_Lab_External
+    ln -s /home/liuj/isaac-sim-5.1 IsaacLab/_isaac_sim
+    ```
+
+3. **Create the uv venv.** This installs Python 3.11, torch 2.7.0 + CUDA 12.8, IsaacLab 2.3.0 (editable from the submodule), and `Galaxea_Lab_External` (editable from `source/`). It does **not** install `isaacsim` — that comes from the binary:
+
+    ```bash
+    uv sync
+    ```
+
+4. **Activate the environment.** Use the provided helper, which activates the venv, exports `ISAAC_PATH` / `EXP_PATH` / `CARB_APP_PATH`, wires up `PYTHONPATH` / `LD_LIBRARY_PATH`, preloads torch's bundled `libgomp.so.1`, and auto-accepts the Omniverse EULA:
+
+    ```bash
+    # If you use conda, deactivate first — conda's isaaclab/isaacsim envs
+    # export sticky ISAAC_PATH / PYTHONPATH that will shadow the binary you
+    # just pointed at. scripts/env.sh will refuse to run otherwise.
+    conda deactivate 2>/dev/null || true
+
+    source scripts/env.sh
+    ```
+
+    Override the Isaac Sim location with `ISAAC_SIM_PATH=/path/to/isaac-sim-5.1 source scripts/env.sh`.
+
+5. **Verify.** You should see the environment banner and be able to launch a rule-based agent:
+
+    ```bash
+    python -c "import torch, isaaclab; print(torch.__version__, isaaclab.__version__)"
+    # -> 2.7.0+cu128 0.47.2
+    python scripts/list_envs.py
+    python scripts/rule_based_agent.py --task=Template-Galaxea-Lab-External-Direct-v0 --enable_cameras
+    ```
+
+---
+
+#### Option B — pip-installed Isaac Sim 5.1.0
+
+Use this if you prefer a fully self-contained venv at the cost of disk (~18 GB total) and a longer initial sync.
+
+1. **Edit `pyproject.toml`.** Add `isaacsim` to `dependencies` and the corresponding source/index:
+
+    ```toml
+    [project]
+    dependencies = [
+        # ... existing entries ...
+        "isaacsim[all,extscache]==5.1.0",
+    ]
+
+    [tool.uv.sources]
+    # ... existing entries ...
+    isaacsim = { index = "nvidia" }
+
+    [[tool.uv.index]]
+    name = "nvidia"
+    url = "https://pypi.nvidia.com"
+    explicit = true
+    ```
+
+2. **Sync and activate.** No `scripts/env.sh` needed — the `isaacsim` wheel installs `.pth` files and `$VENV/bin/isaacsim`, so plain venv activation is enough:
+
+    ```bash
+    uv sync
+    conda deactivate 2>/dev/null || true
+    source .venv/bin/activate
+    export OMNI_KIT_ACCEPT_EULA=YES
+    ```
+
+3. **Verify** as in Option A.
+
+---
+
+#### Notes
+
+- **Editable install of the local package.** `source/Galaxea_Lab_External` is already wired as an editable dep in `pyproject.toml` — `uv sync` installs it. You do **not** need to run `pip install -e source/Galaxea_Lab_External` manually.
+- **Conda-env leakage.** If you normally live in a conda env that activates Isaac Sim (e.g. `isaaclab`), run `conda deactivate` before `source scripts/env.sh`. The conda activation script exports `ISAAC_PATH`, `CARB_APP_PATH`, `PYTHONPATH`, `LD_LIBRARY_PATH` pointing at whichever Isaac Sim that env was built against; those leak into child processes and silently shadow whatever this project points at. `scripts/env.sh` refuses to run when `$CONDA_DEFAULT_ENV` is set to guard against this.
+- **inotify watch warnings.** On first launch, Kit may log many `errno=28 No space left on device` messages — that's the inotify watch limit being hit, not disk pressure. They're non-fatal. To silence: `sudo sysctl fs.inotify.max_user_watches=524288`.
+- **EULA.** `scripts/env.sh` exports `OMNI_KIT_ACCEPT_EULA=YES` for you; on Option B you must do it yourself on first run (or answer `Yes` at the prompt).
 
 - Verify that the extension is correctly installed by:
 
