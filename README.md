@@ -216,6 +216,42 @@ Use this if you prefer a fully self-contained venv at the cost of disk (~18 GB t
     python scripts/rule_based_agent.py --task=Gearbox-Recovery-Inclinedfourth --enable_cameras --no_action
     ```
 
+### Switching between R1 and R1_Lite
+
+The repo ships with two robot configs:
+- `GALAXEA_R1_BUNDLE` (default) — the original Galaxea R1 (`r1_DVT_*.usd`).
+- `GALAXEA_R1_LITE_BUNDLE` — the new R1_Lite (mobile-base variant; `r1_lite.usd`, base welded for tabletop tasks).
+
+To switch, edit one line in `source/Galaxea_Lab_External/Galaxea_Lab_External/robots/robot_bundles.py`:
+
+```python
+ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE  # was GALAXEA_R1_BUNDLE
+```
+
+All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxea-Lab-Agent-Direct-v0`, and the `Gearbox-*` recovery tasks) read from `ACTIVE_ROBOT_BUNDLE`, so no other edits are needed. **Edit-then-restart is the supported workflow** — `ACTIVE_ROBOT_BUNDLE` is read at class-definition time by the env_cfg defaults, so reassigning it at runtime after the env_cfgs have been imported has no effect on already-defined classes.
+
+**Caveat — rule-based agent on R1_Lite.** `r1_lite_rule_policy.py` and `r1_lite_recovery_rule_policy.py` are forks of the R1 policies with mechanical joint-name renames so the env loads, but their pose/offset constants are still tuned for R1 dimensions. Running `rule_based_agent.py` against R1_Lite without `--no_action` will produce wrong motions. Use `--no_action` to inspect the scene visually until the constants are re-tuned.
+
+**Caveat — R1_Lite head cameras.** The vendor URDF defines `camera_head_left_link` (visual + collision) and `camera_head_right_link` (empty link, no visual / collision) but does not reference the `camera_head_*_link.STL` meshes via `<visual>` tags. The `Camera` sensor in the env still attaches to those frames correctly, but the rendered scene will not show a visible camera body for the head. STL files for both head cameras are committed under `assets/Robots/R1_Lite/meshes/` and can be wired in via a URDF edit + re-conversion if a visible head body is needed.
+
+### Re-running the R1_Lite URDF→USD conversion
+
+If the vendor URDF under `source/Galaxea_Lab_External/assets/Robots/R1_Lite/urdf/` changes, regenerate the USD:
+
+```bash
+conda deactivate 2>/dev/null || true
+source scripts/env.sh
+python scripts/convert_r1_lite_urdf.py
+```
+
+The script rewrites `package://mobiman/...` mesh refs to relative paths in a temp URDF copy (the committed URDF is never modified) and runs `isaaclab.sim.converters.UrdfConverter` with `fix_base=True` and `make_instanceable=True`. Output is a 7-file USD bundle at `assets/Robots/R1_Lite/`:
+- `r1_lite.usd` — thin wrapper, what env_cfgs reference.
+- `configuration/r1_lite_base.usd` — bulk geometry (~19 MB).
+- `configuration/r1_lite_physics.usd`, `configuration/r1_lite_robot.usd`, `configuration/r1_lite_sensor.usd` — composition layers.
+- `config.yaml`, `.asset_hash` — metadata.
+
+All 5 `*.usd` files route through Git LFS automatically.
+
 ### Set up IDE (Optional)
 
 To setup the IDE, please follow these instructions:
