@@ -43,6 +43,9 @@ docker/.container.cfg
 # uv cache hints (the venv itself is already ignored above)
 .uv-cache/
 
+# Claude Code per-project state (settings, commands, agents, memory)
+.claude/
+
 # Outputs
 **/output/*
 **/outputs/*
