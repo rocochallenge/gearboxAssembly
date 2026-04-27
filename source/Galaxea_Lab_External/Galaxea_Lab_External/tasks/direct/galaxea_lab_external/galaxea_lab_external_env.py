@@ -412,10 +412,11 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         num_envs = self.scene.num_envs
         for env_idx in range(num_envs):
-            sim_utils.bind_physics_material(f"/World/envs/env_{env_idx}/Robot/left_gripper_link1/collisions", "/World/Materials/gripper_material")
-            sim_utils.bind_physics_material(f"/World/envs/env_{env_idx}/Robot/left_gripper_link2/collisions", "/World/Materials/gripper_material")  
-            sim_utils.bind_physics_material(f"/World/envs/env_{env_idx}/Robot/right_gripper_link1/collisions", "/World/Materials/gripper_material")
-            sim_utils.bind_physics_material(f"/World/envs/env_{env_idx}/Robot/right_gripper_link2/collisions", "/World/Materials/gripper_material")
+            for link_name in self.cfg.robot_bundle.gripper_collision_link_names:
+                sim_utils.bind_physics_material(
+                    f"/World/envs/env_{env_idx}/Robot/{link_name}/collisions",
+                    "/World/Materials/gripper_material",
+                )
 
         gear_mat_cfg = physics_materials_cfg.RigidBodyMaterialCfg(
             static_friction=self.cfg.gears_friction_coefficient,
@@ -1028,5 +1029,3 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         end_time = time.time()
         # print(f"Record data time cost: {end_time - start_time} seconds")
             
-
-       

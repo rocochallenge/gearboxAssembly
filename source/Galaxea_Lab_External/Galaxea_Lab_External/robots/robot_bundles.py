@@ -55,6 +55,7 @@ class RobotBundle:
     right_arm_joint_pattern: str
     left_gripper_dof_name: str
     right_gripper_dof_name: str
+    gripper_collision_link_names: tuple[str, ...]
     torso_joint_pattern: str
     initial_torso_pos: tuple[float, float, float]
     rule_policy_class: type
@@ -77,6 +78,12 @@ GALAXEA_R1_BUNDLE = RobotBundle(
     right_arm_joint_pattern="right_arm_joint.*",
     left_gripper_dof_name="left_gripper_axis1",
     right_gripper_dof_name="right_gripper_axis1",
+    gripper_collision_link_names=(
+        "left_gripper_link1",
+        "left_gripper_link2",
+        "right_gripper_link1",
+        "right_gripper_link2",
+    ),
     torso_joint_pattern="torso_joint[1-3]",
     initial_torso_pos=(0.5, -0.8, 0.5),
     rule_policy_class=GalaxeaRulePolicy,
@@ -95,6 +102,14 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
     right_arm_joint_pattern="right_arm_joint.*",
     left_gripper_dof_name="left_gripper_finger_joint1",
     right_gripper_dof_name="right_gripper_finger_joint1",
+    gripper_collision_link_names=(
+        "left_gripper_link",
+        "left_gripper_finger_link1",
+        "left_gripper_finger_link2",
+        "right_gripper_link",
+        "right_gripper_finger_link1",
+        "right_gripper_finger_link2",
+    ),
     torso_joint_pattern="torso_joint[1-3]",
     initial_torso_pos=(0.5, -0.8, 0.5),
     rule_policy_class=R1LiteRulePolicy,
