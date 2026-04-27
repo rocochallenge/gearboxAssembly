@@ -232,7 +232,7 @@ All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxe
 
 **Caveat — rule-based agent on R1_Lite.** `r1_lite_rule_policy.py` and `r1_lite_recovery_rule_policy.py` are forks of the R1 policies with mechanical joint-name renames so the env loads, but their pose/offset constants are still tuned for R1 dimensions. Running `rule_based_agent.py` against R1_Lite without `--no_action` will produce wrong motions. Use `--no_action` to inspect the scene visually until the constants are re-tuned.
 
-**Caveat — R1_Lite head cameras.** The vendor URDF defines `camera_head_left_link` (visual + collision) and `camera_head_right_link` (empty link, no visual / collision) but does not reference the `camera_head_*_link.STL` meshes via `<visual>` tags. The `Camera` sensor in the env still attaches to those frames correctly, but the rendered scene will not show a visible camera body for the head. STL files for both head cameras are committed under `assets/Robots/R1_Lite/meshes/` and can be wired in via a URDF edit + re-conversion if a visible head body is needed.
+**Caveat — R1_Lite head cameras.** The vendor URDF defines `camera_head_left_link` (collision only, no visual) and `camera_head_right_link` (empty link, no visual / collision) and does not reference the `camera_head_*_link.STL` meshes via `<visual>` tags. The `Camera` sensor in the env still attaches to those frames correctly, but the rendered scene will not show a visible camera body for the head. STL files for both head cameras are committed under `assets/Robots/R1_Lite/meshes/` and can be wired in via a URDF edit + re-conversion if a visible head body is needed.
 
 ### Re-running the R1_Lite URDF→USD conversion
 
