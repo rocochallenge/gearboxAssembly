@@ -25,9 +25,8 @@ import math
 # )
 
 from Galaxea_Lab_External.robots import (
-    GALAXEA_R1_CHALLENGE_CFG,
-    GALAXEA_HEAD_CAMERA_CFG,
-    GALAXEA_HAND_CAMERA_CFG,
+    ACTIVE_ROBOT_BUNDLE,
+    RobotBundle,
     TABLE_CFG,
     RING_GEAR_CFG,
     SUN_PLANETARY_GEAR_CFG,
@@ -56,7 +55,9 @@ class GalaxeaLabAgentEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(dt=sim_dt, render_interval=decimation)
 
     # robot(s)
-    robot_cfg: ArticulationCfg = GALAXEA_R1_CHALLENGE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_bundle: RobotBundle = ACTIVE_ROBOT_BUNDLE
+    robot_cfg: ArticulationCfg = ACTIVE_ROBOT_BUNDLE.articulation_cfg.replace(prim_path="/World/envs/env_.*/Robot")
+    rule_policy_class: type = ACTIVE_ROBOT_BUNDLE.rule_policy_class
 
     # table_cfg: AssetBaseCfg = TABLE_CFG.copy()
     table_cfg: RigidObjectCfg = TABLE_CFG.replace(prim_path="/World/envs/env_.*/Table")
@@ -106,21 +107,21 @@ class GalaxeaLabAgentEnvCfg(DirectRLEnvCfg):
     gripper_friction_coefficient = 2.0
 
     # Camera
-    head_camera_cfg: CameraCfg = GALAXEA_HEAD_CAMERA_CFG.replace(prim_path="/World/envs/env_.*/Robot/zed_link/head_cam/head_cam")
-    left_hand_camera_cfg: CameraCfg = GALAXEA_HAND_CAMERA_CFG.replace(prim_path="/World/envs/env_.*/Robot/left_realsense_link/left_hand_cam/left_hand_cam")
-    right_hand_camera_cfg: CameraCfg = GALAXEA_HAND_CAMERA_CFG.replace(prim_path="/World/envs/env_.*/Robot/right_realsense_link/right_hand_cam/right_hand_cam")
+    head_camera_cfg: CameraCfg = ACTIVE_ROBOT_BUNDLE.head_camera_cfg
+    left_hand_camera_cfg: CameraCfg = ACTIVE_ROBOT_BUNDLE.left_hand_camera_cfg
+    right_hand_camera_cfg: CameraCfg = ACTIVE_ROBOT_BUNDLE.right_hand_camera_cfg
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=4.0, replicate_physics=True)
 
     # custom parameters/scales
     # - controllable joint
-    left_arm_joint_dof_name = "left_arm_joint.*"
-    right_arm_joint_dof_name = "right_arm_joint.*"
-    left_gripper_dof_name = "left_gripper_axis1"
-    right_gripper_dof_name = "right_gripper_axis1"
+    left_arm_joint_dof_name: str = ACTIVE_ROBOT_BUNDLE.left_arm_joint_pattern
+    right_arm_joint_dof_name: str = ACTIVE_ROBOT_BUNDLE.right_arm_joint_pattern
+    left_gripper_dof_name: str = ACTIVE_ROBOT_BUNDLE.left_gripper_dof_name
+    right_gripper_dof_name: str = ACTIVE_ROBOT_BUNDLE.right_gripper_dof_name
 
-    torso_joint_dof_name = "torso_joint[1-3]" # Since in current task, torso_joint4 will always be fixed at 0.0
+    torso_joint_dof_name: str = ACTIVE_ROBOT_BUNDLE.torso_joint_pattern  # excludes torso_joint4 (R1-only)
     torso_joint1_dof_name = "torso_joint1"
     torso_joint2_dof_name = "torso_joint2"
     torso_joint3_dof_name = "torso_joint3"
