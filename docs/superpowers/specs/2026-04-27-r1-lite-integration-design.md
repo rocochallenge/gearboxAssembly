@@ -71,9 +71,11 @@ class RobotBundle:
 
 ### 4.3 The two bundles + active pointer
 
-`GALAXEA_R1_BUNDLE` wraps the existing R1 (joints `*_gripper_axis1`, frames `zed_link/head_cam`, `left_realsense_link/left_hand_cam`, `right_realsense_link/right_hand_cam`, classes `GalaxeaRulePolicy` / `GalaxeaRecoveryRulePolicy`).
+`GALAXEA_R1_BUNDLE` wraps the existing R1 (joints `*_gripper_axis1`, frames `zed_link/head_cam`, `left_realsense_link/left_hand_cam`, `right_realsense_link/right_hand_cam`, classes `GalaxeaRulePolicy` / `RecoveryRulePolicy`).
 
 `GALAXEA_R1_LITE_BUNDLE` wraps R1_Lite (joints `*_gripper_finger_joint1`, frames `camera_head_left_link/head_cam`, `left_D405_link/left_hand_cam`, `right_D405_link/right_hand_cam`, classes `R1LiteRulePolicy` / `R1LiteRecoveryRulePolicy`).
+
+Note: the recovery class is named `RecoveryRulePolicy` in `recovery_rule_policy.py` (no `Galaxea` prefix). The `gearbox_recovery_env_cfg.py` reads its `rule_policy_class` field from `ACTIVE_ROBOT_BUNDLE.recovery_rule_policy_class` (not `.rule_policy_class`); the other two env_cfgs read `.rule_policy_class`. The env classes call `self.cfg.rule_policy_class(...)` with the right constructor arguments — gearbox_recovery passes an extra `initial_assembly_state` arg.
 
 `ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE` — the single pointer that env_cfgs read. Default is R1 to preserve existing behavior.
 
