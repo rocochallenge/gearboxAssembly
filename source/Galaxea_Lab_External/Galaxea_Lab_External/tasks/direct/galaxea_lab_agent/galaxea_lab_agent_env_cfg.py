@@ -127,9 +127,7 @@ class GalaxeaLabAgentEnvCfg(DirectRLEnvCfg):
     torso_joint3_dof_name = "torso_joint3"
     torso_joint4_dof_name = "torso_joint4"
 
-    # Robot initial torso joint position
-    initial_torso_joint1_pos = 0.5
-    initial_torso_joint2_pos = -0.8
-    initial_torso_joint3_pos = 0.5
+    # Robot initial torso joint position (sourced from the active robot bundle)
+    initial_torso_pos: tuple[float, float, float] = ACTIVE_ROBOT_BUNDLE.initial_torso_pos
 
     x_offset = 0.2

@@ -184,6 +184,7 @@ Use this if you prefer a fully self-contained venv at the cost of disk (~18 GB t
             ```bash
             # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
             python scripts/random_agent.py --task=<TASK_NAME>
+            ```
 
 ### Run the rule-based agent
 

@@ -87,12 +87,10 @@ class R1LiteRecoveryRulePolicy:
         # self.target_position_right = torch.tensor([0.3864, -0.5237, 1.1475], device=self.device)
         # self.target_orientation_right = torch.tensor([0.0, -1.0, 0.0, 0.0], device=self.device)
 
-        self.initial_pos_left = torch.tensor([-20.0 / 180.0 * math.pi, 100.6 / 180.0 * math.pi,
-                                         -24.0 / 180.0 * math.pi, 17.8 / 180.0 * math.pi,
-                                         38.7 / 180.0 * math.pi, 20.1 / 180.0 * math.pi], device=self.device)
-        self.initial_pos_right = torch.tensor([-20.0 / 180.0 * math.pi, 100.6 / 180.0 * math.pi,
-                                         -22.0 / 180.0 * math.pi, -40.0 / 180.0 * math.pi,
-                                         -67.6 / 180.0 * math.pi, 18.1 / 180.0 * math.pi], device=self.device)
+        # Sourced from the active robot's ArticulationCfg.init_state.joint_pos via default_joint_pos.
+        robot = self.scene["robot"]
+        self.initial_pos_left = robot.data.default_joint_pos[0, self.left_arm_entity_cfg.joint_ids].clone()
+        self.initial_pos_right = robot.data.default_joint_pos[0, self.right_arm_entity_cfg.joint_ids].clone()
 
         self.num_gripper_joints = None
 
@@ -614,7 +612,7 @@ class R1LiteRecoveryRulePolicy:
         target_orientation = root_state[:, 3:7].clone()
         # Rotate the target orientation 180 degrees around the y-axis
         target_orientation, target_position = torch_utils.tf_combine(
-            target_orientation, target_position, 
+            target_orientation, target_position,
             torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
         )
 
@@ -749,7 +747,7 @@ class R1LiteRecoveryRulePolicy:
         if gear_id == 6:
             # Rotate the target orientation 180 degrees around the y-axis
             target_orientation, target_position = torch_utils.tf_combine(
-                self.current_target_orientation, target_position, 
+                self.current_target_orientation, target_position,
                 torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
             )
 

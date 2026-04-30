@@ -45,6 +45,7 @@ docker/.container.cfg
 
 # Claude Code per-project state (settings, commands, agents, memory)
 .claude/
+.codex/
 
 # Outputs
 **/output/*

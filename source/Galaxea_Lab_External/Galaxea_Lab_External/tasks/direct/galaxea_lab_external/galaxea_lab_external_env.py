@@ -652,12 +652,12 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.robot.set_joint_position_target(joint_pos, self._joint_idx, env_ids)
 
         # Write the default torso joint position to simulation
-        self.robot.write_joint_position_to_sim(torch.tensor([self.cfg.initial_torso_joint1_pos, self.cfg.initial_torso_joint2_pos, self.cfg.initial_torso_joint3_pos], device=self.device), self._torso_joint_idx, env_ids)
+        self.robot.write_joint_position_to_sim(torch.tensor(list(self.cfg.initial_torso_pos), device=self.device), self._torso_joint_idx, env_ids)
 
         # Set torso joint position limit
-        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_joint1_pos, self.cfg.initial_torso_joint1_pos], device=self.device), self._torso_joint1_idx, env_ids)
-        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_joint2_pos, self.cfg.initial_torso_joint2_pos], device=self.device), self._torso_joint2_idx, env_ids)
-        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_joint3_pos, self.cfg.initial_torso_joint3_pos], device=self.device), self._torso_joint3_idx, env_ids)
+        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_pos[0], self.cfg.initial_torso_pos[0]], device=self.device), self._torso_joint1_idx, env_ids)
+        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_pos[1], self.cfg.initial_torso_pos[1]], device=self.device), self._torso_joint2_idx, env_ids)
+        self.robot.write_joint_position_limit_to_sim(torch.tensor([self.cfg.initial_torso_pos[2], self.cfg.initial_torso_pos[2]], device=self.device), self._torso_joint3_idx, env_ids)
 
 
         # self.head_camera.reset(env_ids)
