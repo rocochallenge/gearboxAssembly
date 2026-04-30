@@ -20,12 +20,23 @@ dependencies = [
 
 [tool.uv]
 package = false
-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
 build-constraint-dependencies = ["setuptools<81", "wheel<0.46"]
 reinstall-package = ["galaxea_lab_external"]
 override-dependencies = [
     "pywin32==306 ; sys_platform == 'win32'",
     "starlette==0.49.1",
+    # On Windows, h5py and Isaac Sim's RTX sensors extension both ship hdf5.dll
+    # and Windows resolves DLLs by name (first-loaded wins, no RPATH). Pin h5py
+    # to a release whose bundled HDF5 ABI matches Isaac Sim 5.1's bundled HDF5
+    # 1.14.6 — h5py 3.14.0 ships HDF5 1.14.6. Without this, importing h5py
+    # after Kit boots fails with "DLL load failed while importing _errors:
+    # The specified procedure could not be found", and preloading h5py first
+    # breaks isaacsim.sensors.rtx (HDF5 2.0.0 vs 1.14.6 ABI mismatch).
+    "h5py==3.14.0 ; sys_platform == 'win32'",
 ]
 
 [tool.uv.sources]

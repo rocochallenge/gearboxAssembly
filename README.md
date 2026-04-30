@@ -89,7 +89,9 @@ Best if you already have (or are willing to install) the Isaac Sim 5.1.0 binary 
     uv sync
     ```
 
-4. **Activate the environment.** Use the provided helper, which activates the venv, exports `ISAAC_PATH` / `EXP_PATH` / `CARB_APP_PATH`, wires up `PYTHONPATH` / `LD_LIBRARY_PATH`, preloads torch's bundled `libgomp.so.1`, and auto-accepts the Omniverse EULA:
+4. **Activate the environment.** Use the provided helper, which activates the venv, exports `ISAAC_PATH` / `EXP_PATH` / `CARB_APP_PATH`, wires up `PYTHONPATH` (and on Linux `LD_LIBRARY_PATH` + a torch-`libgomp.so.1` preload), and auto-accepts the Omniverse EULA:
+
+    Linux:
 
     ```bash
     # If you use conda, deactivate first — conda's isaaclab/isaacsim envs
@@ -101,6 +103,14 @@ Best if you already have (or are willing to install) the Isaac Sim 5.1.0 binary 
     ```
 
     Override the Isaac Sim location with `ISAAC_SIM_PATH=/path/to/isaac-sim-5.1 source scripts/env.sh`.
+
+    Windows (PowerShell — must be **dot-sourced**):
+
+    ```powershell
+    . .\scripts\env.ps1
+    ```
+
+    Override the Isaac Sim location with `$env:ISAAC_SIM_PATH = "C:\path\to\isaac-sim-standalone-5.1.0"; . .\scripts\env.ps1` (default: `C:\isaac-sim-standalone-5.1.0`). On Windows the script just puts Isaac Sim's `site\` directory on `PYTHONPATH` — its `sitecustomize.py` does the rest of the wiring (kit / exts / extscache + DLL search paths via `os.add_dll_directory`).
 
 5. **Verify.** You should see the environment banner and be able to launch a rule-based agent:
 
