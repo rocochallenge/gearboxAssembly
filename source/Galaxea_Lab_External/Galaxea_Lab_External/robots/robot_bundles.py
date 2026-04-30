@@ -111,11 +111,12 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
         "right_gripper_finger_link2",
     ),
     torso_joint_pattern="torso_joint[1-3]",
-    initial_torso_pos=(0.5, -0.8, 0.5),
+    initial_torso_pos=(0.0, 0.0, 0.0),
     rule_policy_class=R1LiteRulePolicy,
     recovery_rule_policy_class=R1LiteRecoveryRulePolicy,
 )
 
 
 # The single switch. Edit this line to flip the active robot for all tasks.
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE
+ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE
+# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE

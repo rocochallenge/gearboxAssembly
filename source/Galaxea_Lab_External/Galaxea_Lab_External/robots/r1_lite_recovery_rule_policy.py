@@ -610,10 +610,11 @@ class R1LiteRecoveryRulePolicy:
         
         # target_orientation = torch.tensor([[0.0, -1.0, 0.0, 0.0]], device=sim.device)
         target_orientation = root_state[:, 3:7].clone()
-        # Rotate the target orientation 180 degrees around the y-axis
+        # Rotate +90 deg around Y so link6 +X (R1_Lite gripper extension) points world -Z (down).
+        # R1's gripper extends along link6 +Z, so R1 uses [0, 1, 0, 0] (180-X) instead.
         target_orientation, target_position = torch_utils.tf_combine(
             target_orientation, target_position,
-            torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
+            torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
         )
 
         # print(f"target_position: {target_position}, target_orientation: {target_orientation}")
@@ -745,10 +746,10 @@ class R1LiteRecoveryRulePolicy:
         target_orientation = torch.tensor([[0.0, -1.0, 0.0, 0.0]], device=self.sim.device)
 
         if gear_id == 6:
-            # Rotate the target orientation 180 degrees around the y-axis
+            # Rotate +90 deg around Y so link6 +X (R1_Lite gripper extension) points world -Z (down).
             target_orientation, target_position = torch_utils.tf_combine(
                 self.current_target_orientation, target_position,
-                torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
+                torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
             )
 
         target_position_h_down = target_position + torch.tensor([0.0, 0.0, mount_height_offset], device=self.sim.device)
