@@ -36,6 +36,22 @@ from .r1_lite_rule_policy import R1LiteRulePolicy
 from .r1_lite_recovery_rule_policy import R1LiteRecoveryRulePolicy
 
 
+def _torso_pos_from_cfg(cfg: ArticulationCfg) -> tuple[float, ...]:
+    """Return torso joint positions from an articulation cfg's
+    ``init_state.joint_pos``, ordered by the trailing index.
+
+    R1 has four torso joints (``torso_joint1..4``), R1_Lite has three
+    (``torso_joint1..3``); we return whatever's declared so the bundle's
+    ``initial_torso_pos`` stays in sync regardless of the chain length.
+    """
+    jp = cfg.init_state.joint_pos
+    keys = sorted(
+        (k for k in jp if k.startswith("torso_joint")),
+        key=lambda k: int(k[len("torso_joint"):]),
+    )
+    return tuple(jp[k] for k in keys)
+
+
 @dataclass(frozen=True)
 class RobotBundle:
     """Per-robot configuration aggregate.
@@ -57,7 +73,7 @@ class RobotBundle:
     right_gripper_dof_name: str
     gripper_collision_link_names: tuple[str, ...]
     torso_joint_pattern: str
-    initial_torso_pos: tuple[float, float, float]
+    initial_torso_pos: tuple[float, ...]
     rule_policy_class: type
     recovery_rule_policy_class: type
 
@@ -84,8 +100,12 @@ GALAXEA_R1_BUNDLE = RobotBundle(
         "right_gripper_link1",
         "right_gripper_link2",
     ),
-    torso_joint_pattern="torso_joint[1-3]",
-    initial_torso_pos=(0.5, -0.8, 0.5),
+    torso_joint_pattern="torso_joint[1-4]",
+    # R1's USD (r1_DVT_colored_cam_pos.usd) has torso joint limits baked
+    # to [0, 0], so the cfg's init_state.joint_pos must be zero — we
+    # can't derive this from cfg via _torso_pos_from_cfg like R1_Lite does.
+    # Runtime _reset_idx widens the limits and writes this target.
+    initial_torso_pos=(0.5, -0.8, 0.8, 0.0),
     rule_policy_class=GalaxeaRulePolicy,
     recovery_rule_policy_class=RecoveryRulePolicy,
 )
@@ -111,12 +131,12 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
         "right_gripper_finger_link2",
     ),
     torso_joint_pattern="torso_joint[1-3]",
-    initial_torso_pos=(0.4, -0.8, -0.8),
+    initial_torso_pos=_torso_pos_from_cfg(GALAXEA_R1_LITE_CFG),
     rule_policy_class=R1LiteRulePolicy,
     recovery_rule_policy_class=R1LiteRecoveryRulePolicy,
 )
 
 
 # The single switch. Edit this line to flip the active robot for all tasks.
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE
-# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE
+# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE
+ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE

@@ -450,13 +450,13 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
     # repeatable IK reach debugging — gear_1 is positioned in the left arm's
     # natural workspace so the first pickup is unambiguous.
     DEBUG_FIXED_OBJECT_XY = {
-        "planetary_carrier":    (0.50,  0.00),
-        "sun_planetary_gear_1": (0.45,  0.30),
-        "sun_planetary_gear_2": (0.55,  0.30),
-        "sun_planetary_gear_3": (0.45, -0.30),
-        "sun_planetary_gear_4": (0.55, -0.30),
-        "ring_gear":            (0.70,  0.00),
-        "planetary_reducer":    (0.70,  0.30),
+        "planetary_carrier":    (0.55,  0.00),
+        "sun_planetary_gear_1": (0.50,  0.30),
+        "sun_planetary_gear_2": (0.60,  0.30),
+        "sun_planetary_gear_3": (0.50, -0.30),
+        "sun_planetary_gear_4": (0.60, -0.30),
+        "ring_gear":            (0.75,  0.00),
+        "planetary_reducer":    (0.75,  0.30),
     }
 
     def _randomize_object_positions(self, object_list: list, object_names: list,

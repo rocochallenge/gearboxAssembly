@@ -76,7 +76,7 @@ class R1LiteRecoveryRulePolicy:
         self.fingertip_extension = 0.045
         self.table_height = 0.9
         self.grasping_height = 0.005
-        self.lifting_height = 0.2
+        self.lifting_height = 0.12
 
         self.diff_ik_controller, self.left_arm_entity_cfg, self.left_gripper_entity_cfg = self.get_config("left")
         self.diff_ik_controller, self.right_arm_entity_cfg, self.right_gripper_entity_cfg = self.get_config("right")

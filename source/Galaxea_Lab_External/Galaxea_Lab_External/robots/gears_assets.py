@@ -11,7 +11,7 @@ from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg, Articulatio
 ##
 # Configuration
 ##
-x_offset = 0.2
+x_offset = 0.25
 
 # TABLE_CFG: AssetBaseCfg = AssetBaseCfg(
 #     prim_path="/World/envs/env_.*/Table",

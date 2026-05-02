@@ -62,12 +62,15 @@ GALAXEA_R1_CHALLENGE_CFG = ArticulationCfg(
             # "torso_joint1": 28.6479 / 180.0 * math.pi,
             # "torso_joint2": -45.8366 / 180.0 * math.pi,
             # "torso_joint3": 28.6479 / 180.0 * math.pi,
-            # "torso_joint1": 0.5,
-            # "torso_joint2": -0.8,
-            # "torso_joint3": 0.8,
+            # NOTE: r1_DVT_colored_cam_pos.usd has torso joint limits baked
+            # to [0, 0]. Init pose must satisfy that (so we keep these zero);
+            # the actual runtime torso target lives in
+            # GALAXEA_R1_BUNDLE.initial_torso_pos and is applied in _reset_idx
+            # after write_joint_position_limit_to_sim widens the limits.
             "torso_joint1": 0.0,
             "torso_joint2": 0.0,
             "torso_joint3": 0.0,
+            "torso_joint4": 0.0,
             },
             pos=(0.0, 0.0, 0.0),
             rot=(1.0, 0.0, 0.0, 0.0),
@@ -285,26 +288,26 @@ GALAXEA_R1_LITE_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
-            # Pre-fold elbow (j3 ≈ -90°) and keep wrist neutral so DLS IK starts
-            # in the same configuration branch the policy ends up using during
-            # gripper-down picks. Reduces j3 limit-saturation seen with the old
-            # near-extended init pose.
+            # Initial gesture tuned for the gearbox-assembly task. Torso pose
+            # leans the upper body toward the table; arms pre-folded at the
+            # elbow so DLS starts in the same branch it converges to during
+            # gripper-down picks. Gripper fingers initialized open.
             "left_arm_joint1": -20.0 / 180.0 * math.pi,
-            "left_arm_joint2":  90.0 / 180.0 * math.pi,
+            "left_arm_joint2":  1.2,
             "left_arm_joint3": -0.98,
             "left_arm_joint4":   0.636,
             "left_arm_joint5":   0.09,
             "left_arm_joint6":   -0.18,
             "left_gripper_finger_joint1": 0.04,
             "right_arm_joint1": -20.0 / 180.0 * math.pi,
-            "right_arm_joint2":  90.0 / 180.0 * math.pi,
+            "right_arm_joint2":  1.2,
             "right_arm_joint3": -0.98,
             "right_arm_joint4":   0.636,
             "right_arm_joint5":   0.09,
             "right_arm_joint6":   -0.18,
             "right_gripper_finger_joint1": 0.04,
             "torso_joint1": 0.4,
-            "torso_joint2": -0.8,
+            "torso_joint2": -0.66,
             "torso_joint3": -0.8,
         },
         pos=(0.0, 0.0, 0.0),

@@ -82,10 +82,18 @@ class R1LiteRulePolicy:
         self.fingertip_extension = 0.045
         self.table_height = 0.9
         self.grasping_height = 0.005
-        self.lifting_height = 0.2
+        self.lifting_height = 0.12
 
-        self.diff_ik_controller, self.left_arm_entity_cfg, self.left_gripper_entity_cfg = self.get_config("left")
-        self.diff_ik_controller, self.right_arm_entity_cfg, self.right_gripper_entity_cfg = self.get_config("right")
+        # Per-arm IK controllers. Kept as a dict so each arm has its own
+        # DifferentialIKController instance (the previous code overwrote a
+        # single instance on the second call, which was only safe because
+        # DLS is stateless).
+        left_ik, self.left_arm_entity_cfg, self.left_gripper_entity_cfg = self.get_config("left")
+        right_ik, self.right_arm_entity_cfg, self.right_gripper_entity_cfg = self.get_config("right")
+        self.ik_controllers = {"left": left_ik, "right": right_ik}
+        # Kept for callers that still pass self.diff_ik_controller; move_robot_to_position
+        # ignores its controller arg and looks the right one up by arm_entity_cfg.
+        self.diff_ik_controller = right_ik
 
         self.right_gripper_joint_ids = self.right_gripper_entity_cfg.joint_ids
         self.left_gripper_joint_ids = self.left_gripper_entity_cfg.joint_ids
@@ -282,22 +290,6 @@ class R1LiteRulePolicy:
     def get_config(self, arm_name: str):
         # arm_name: left or right
 
-        # Bump DLS damping (default lambda_val=0.01) up to 0.10 — the default is
-        # so weak that (J*J^T + lambda^2*I)^-1 explodes near singularities (j4
-        # saturating on across-body mounts) and DLS spits out huge delta-q (the
-        # "snap" event that throws the gear). SVD with hard min_singular_value
-        # was tried and oscillated when the troublesome singular value drifted
-        # across the threshold — DLS's smooth damping doesn't have that issue.
-        diff_ik_cfg = DifferentialIKControllerCfg(
-            command_type="pose",
-            use_relative_mode=False,
-            ik_method="dls",
-            ik_params={"lambda_val": 0.1},
-        )
-        diff_ik_controller = DifferentialIKController(
-            diff_ik_cfg, num_envs=self.scene.num_envs, device=self.sim.device
-        )
-
         # Specify robot-specific parameters
         arm_entity_cfg = SceneEntityCfg(
             "robot", joint_names=[f"{arm_name}_arm_joint.*"], body_names=[f"{arm_name}_arm_link6"]
@@ -305,22 +297,26 @@ class R1LiteRulePolicy:
         gripper_entity_cfg = SceneEntityCfg(
             "robot", joint_names=[f"{arm_name}_gripper_finger_joint1"]
         )
-
-        # Resolving the scene entities
         arm_entity_cfg.resolve(self.scene)
         gripper_entity_cfg.resolve(self.scene)
-        
-        # gripper_entity_cfg = SceneEntityCfg("robot", joint_names=[f"{arm_name}_gripper_.*"], body_names=[f"{arm_name}_gripper_link1"])
-        # gripper_entity_cfg.resolve(self.scene)
-        
-        return diff_ik_controller, arm_entity_cfg, gripper_entity_cfg
-        
 
+        diff_ik_cfg = DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.01},
+        )
+        controller = DifferentialIKController(
+            diff_ik_cfg, num_envs=self.scene.num_envs, device=self.sim.device
+        )
+
+        return controller, arm_entity_cfg, gripper_entity_cfg
+        
 
     def move_robot_to_position(self,
                             arm_entity_cfg: SceneEntityCfg,
                             gripper_entity_cfg: SceneEntityCfg,
-                            diff_ik_controller: DifferentialIKController,
+                            diff_ik_controller,
                             target_position: torch.Tensor, target_orientation: torch.Tensor,
                             target_marker: VisualizationMarkers):
         robot = self.scene["robot"]
@@ -333,37 +329,44 @@ class R1LiteRulePolicy:
         gripper_body_ids = gripper_entity_cfg.body_ids
         self.num_gripper_joints = len(gripper_joint_ids)
 
+        # Pick the per-arm controller from our dict — `diff_ik_controller` arg
+        # is kept only for backwards compat with existing call sites that pass
+        # self.diff_ik_controller. The per-arm lookup is what actually runs.
+        # Joint id 9 is the first left-arm joint, 10 is the first right-arm.
+        arm_key = "left" if arm_entity_cfg.joint_ids[0] == 9 else "right"
+        controller = self.ik_controllers[arm_key]
+
+        ee_pose_w = robot.data.body_state_w[:, arm_body_ids[0], 0:7]
+        root_pose_w = robot.data.root_state_w[:, 0:7]
+
+        # Convert the world-frame target into the robot's root frame so it
+        # matches the frame DLS sees the EE in (ee_pos_b below). Without this,
+        # any non-zero robot init pos shifts the apparent IK aim by exactly
+        # `robot_pos` (e.g. moving the robot −5 cm in X drifted the aim −5 cm).
+        target_position_b, target_orientation_b = subtract_frame_transforms(
+            root_pose_w[:, 0:3],
+            root_pose_w[:, 3:7],
+            target_position,
+            target_orientation,
+        )
+        ik_commands = torch.cat([target_position_b, target_orientation_b], dim=-1)
+
         if robot.is_fixed_base:
             ee_jacobi_idx = arm_body_ids[0] - 1
         else:
             ee_jacobi_idx = arm_body_ids[0]
-
-        # Get the target position and orientation of the arm
-        # print(f"target_position: {target_position}, target_orientation: {target_orientation}")
-        ik_commands = torch.cat([target_position, target_orientation], dim=-1)
-        diff_ik_controller.set_command(ik_commands)
-
-        # IK solver
-        # obtain quantities from simulation
+        controller.set_command(ik_commands)
         jacobian = robot.root_physx_view.get_jacobians()[
             :, ee_jacobi_idx, :, arm_entity_cfg.joint_ids
         ]
-        ee_pose_w = robot.data.body_state_w[
-            :, arm_body_ids[0], 0:7
-        ]
-        root_pose_w = robot.data.root_state_w[:, 0:7]
         joint_pos = robot.data.joint_pos[:, arm_entity_cfg.joint_ids]
-        # compute frame in root frame
         ee_pos_b, ee_quat_b = subtract_frame_transforms(
             root_pose_w[:, 0:3],
             root_pose_w[:, 3:7],
             ee_pose_w[:, 0:3],
             ee_pose_w[:, 3:7],
         )
-        # compute the joint commands
-        joint_pos_des = diff_ik_controller.compute(
-            ee_pos_b, ee_quat_b, jacobian, joint_pos
-        )
+        joint_pos_des = controller.compute(ee_pos_b, ee_quat_b, jacobian, joint_pos)
 
         # IK diagnostic: throttle to every 10 sim steps (~0.10 s at sim_dt=0.01)
         # for finer resolution during mount phases.
@@ -380,7 +383,7 @@ class R1LiteRulePolicy:
             grip_pos = robot.data.joint_pos[0, gripper_entity_cfg.joint_ids[0]].item()
             arm_id = "L" if arm_entity_cfg.joint_ids[0] == 9 else "R"
             print(
-                f"[ik step={self.count} arm={arm_id}] "
+                f"[DLS step={self.count} arm={arm_id}] "
                 f"tgt=({tgt[0]:+.2f},{tgt[1]:+.2f},{tgt[2]:+.2f}) "
                 f"ee=({ee[0]:+.2f},{ee[1]:+.2f},{ee[2]:+.2f}) "
                 f"g1=({g1[0]:+.3f},{g1[1]:+.3f},{g1[2]:+.3f}) "
@@ -769,10 +772,9 @@ class R1LiteRulePolicy:
             )
 
         if self.count >= count_step[1] and self.count < count_step[2]:
-            # Ramp Z from lift height down to grasp height over the first 50%
-            # of the phase, then hold at the bottom for the remaining 50% so
-            # the EE has time to converge to grasp Z under DLS damping before
-            # the gripper opens.
+            # Linearly interpolate Z from lift height down to grasp height over
+            # the full phase. Re-enabled after lifting_height was reduced — the
+            # short Z drop (now ~12 cm) is reachable in time even with smoothing.
             phase_start = int(count_step[1].item())
             phase_end = int(count_step[2].item())
             phase_progress = (self.count - phase_start) / max(1, phase_end - phase_start)
@@ -876,8 +878,7 @@ class R1LiteRulePolicy:
             )
 
         if self.count >= count_step[1] and self.count < count_step[2]:
-            # Ramp Z over first 50% of phase, hold for the rest.
-            # See mount_gear_to_target for rationale.
+            # Linearly interpolate Z over the full phase — see mount_gear_to_target.
             phase_start = int(count_step[1].item())
             phase_end = int(count_step[2].item())
             phase_progress = (self.count - phase_start) / max(1, phase_end - phase_start)
