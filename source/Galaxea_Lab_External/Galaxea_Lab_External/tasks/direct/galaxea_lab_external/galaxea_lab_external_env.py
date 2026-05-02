@@ -449,15 +449,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
     # (or remove a key) to re-enable randomization for that object. Useful for
     # repeatable IK reach debugging — gear_1 is positioned in the left arm's
     # natural workspace so the first pickup is unambiguous.
-    DEBUG_FIXED_OBJECT_XY = {
-        "planetary_carrier":    (0.50,  0.00),
-        "sun_planetary_gear_1": (0.45,  0.30),
-        "sun_planetary_gear_2": (0.55,  0.30),
-        "sun_planetary_gear_3": (0.45, -0.30),
-        "sun_planetary_gear_4": (0.55, -0.30),
-        "ring_gear":            (0.70,  0.00),
-        "planetary_reducer":    (0.70,  0.30),
-    }
+    DEBUG_FIXED_OBJECT_XY: dict[str, tuple[float, float]] = {}
 
     def _randomize_object_positions(self, object_list: list, object_names: list,
                               safety_margin: float = 0.02, max_attempts: int = 1000):
@@ -537,7 +529,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
                         # x = 0.26 + self.cfg.x_offset
                         # y = 0.0
                     if obj_name == "planetary_carrier":
-                        x = 0.4 + self.cfg.x_offset 
+                        x = 0.3 + self.cfg.x_offset 
                         y = 0.0
                     elif obj_name == "sun_planetary_gear_1":
                         y = torch.rand(1, device=self.device).item() * 0.4

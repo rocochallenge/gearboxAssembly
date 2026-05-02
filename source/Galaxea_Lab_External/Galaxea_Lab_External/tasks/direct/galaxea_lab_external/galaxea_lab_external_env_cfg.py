@@ -133,4 +133,4 @@ class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
     # Robot initial torso joint position (sourced from the active robot bundle)
     initial_torso_pos: tuple[float, float, float] = ACTIVE_ROBOT_BUNDLE.initial_torso_pos
 
-    x_offset = 0.2
+    x_offset = 0.15
