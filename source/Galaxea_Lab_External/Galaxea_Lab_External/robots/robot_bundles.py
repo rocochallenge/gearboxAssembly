@@ -105,7 +105,7 @@ GALAXEA_R1_BUNDLE = RobotBundle(
     # to [0, 0], so the cfg's init_state.joint_pos must be zero — we
     # can't derive this from cfg via _torso_pos_from_cfg like R1_Lite does.
     # Runtime _reset_idx widens the limits and writes this target.
-    initial_torso_pos=(0.5, -0.8, 0.8, 0.0),
+    initial_torso_pos=(0.5, -0.8, 0.5, 0.0),
     rule_policy_class=GalaxeaRulePolicy,
     recovery_rule_policy_class=RecoveryRulePolicy,
 )
@@ -138,5 +138,5 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
 
 
 # The single switch. Edit this line to flip the active robot for all tasks.
-# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE
+ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE
+# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE
