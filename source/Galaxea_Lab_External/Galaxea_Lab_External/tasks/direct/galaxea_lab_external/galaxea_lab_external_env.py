@@ -444,6 +444,21 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         for env_idx in range(num_envs):
             sim_utils.bind_physics_material(f"/World/envs/env_{env_idx}/Table/table/body_whiteLarge", "/World/Materials/table_material")
         
+    # DEBUG: when this dict has an entry for an object name, that object is placed
+    # at the fixed world (x, y) given here instead of being randomized. Set to {}
+    # (or remove a key) to re-enable randomization for that object. Useful for
+    # repeatable IK reach debugging — gear_1 is positioned in the left arm's
+    # natural workspace so the first pickup is unambiguous.
+    DEBUG_FIXED_OBJECT_XY = {
+        "planetary_carrier":    (0.50,  0.00),
+        "sun_planetary_gear_1": (0.45,  0.30),
+        "sun_planetary_gear_2": (0.55,  0.30),
+        "sun_planetary_gear_3": (0.45, -0.30),
+        "sun_planetary_gear_4": (0.55, -0.30),
+        "ring_gear":            (0.70,  0.00),
+        "planetary_reducer":    (0.70,  0.30),
+    }
+
     def _randomize_object_positions(self, object_list: list, object_names: list,
                               safety_margin: float = 0.02, max_attempts: int = 1000):
         """Randomize positions of objects on table without overlapping
@@ -502,6 +517,14 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
             # Generate non-overlapping positions for each environment
             for env_idx in range(num_envs):
+                # DEBUG: skip random sampling when a fixed XY is configured.
+                if obj_name in self.DEBUG_FIXED_OBJECT_XY:
+                    fx, fy = self.DEBUG_FIXED_OBJECT_XY[obj_name]
+                    pos = torch.tensor([fx, fy, 0.92], device=self.device)
+                    root_state[env_idx, :3] = pos
+                    placed_objects[env_idx].append((pos, obj_name))
+                    continue
+
                 position_found = False
 
                 for attempt in range(max_attempts):

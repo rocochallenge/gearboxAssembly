@@ -285,23 +285,27 @@ GALAXEA_R1_LITE_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
+            # Pre-fold elbow (j3 ≈ -90°) and keep wrist neutral so DLS IK starts
+            # in the same configuration branch the policy ends up using during
+            # gripper-down picks. Reduces j3 limit-saturation seen with the old
+            # near-extended init pose.
             "left_arm_joint1": -20.0 / 180.0 * math.pi,
-            "left_arm_joint2": 100.6 / 180.0 * math.pi,
-            "left_arm_joint3": -24.0 / 180.0 * math.pi,
-            "left_arm_joint4": 17.8 / 180.0 * math.pi,
-            "left_arm_joint5": -38.7 / 180.0 * math.pi,
-            "left_arm_joint6": 20.1 / 180.0 * math.pi,
+            "left_arm_joint2":  90.0 / 180.0 * math.pi,
+            "left_arm_joint3": -0.98,
+            "left_arm_joint4":   0.636,
+            "left_arm_joint5":   0.09,
+            "left_arm_joint6":   -0.18,
             "left_gripper_finger_joint1": 0.04,
             "right_arm_joint1": -20.0 / 180.0 * math.pi,
-            "right_arm_joint2": 100.8 / 180.0 * math.pi,
-            "right_arm_joint3": -22.0 / 180.0 * math.pi,
-            "right_arm_joint4": -40 / 180.0 * math.pi,
-            "right_arm_joint5": 67.6 / 180.0 * math.pi,
-            "right_arm_joint6": 18.1 / 180.0 * math.pi,
+            "right_arm_joint2":  90.0 / 180.0 * math.pi,
+            "right_arm_joint3": -0.98,
+            "right_arm_joint4":   0.636,
+            "right_arm_joint5":   0.09,
+            "right_arm_joint6":   -0.18,
             "right_gripper_finger_joint1": 0.04,
-            "torso_joint1": 0.0,
-            "torso_joint2": 0.0,
-            "torso_joint3": 0.0,
+            "torso_joint1": 0.4,
+            "torso_joint2": -0.8,
+            "torso_joint3": -0.8,
         },
         pos=(0.0, 0.0, 0.0),
         rot=(1.0, 0.0, 0.0, 0.0),
@@ -326,7 +330,8 @@ GALAXEA_R1_LITE_CFG = ArticulationCfg(
             velocity_limit_sim=10,
         ),
         "r1_lite_grippers": ImplicitActuatorCfg(
-            joint_names_expr=[".*_gripper_finger_joint[12]"],
+            # joint2 mimics joint1 (URDF <mimic> tag, multiplier=-1) so only joint1 is independently driven.
+            joint_names_expr=[".*_gripper_finger_joint1"],
             effort_limit_sim=100.0,
             velocity_limit_sim=0.07,
             stiffness=25000.0,

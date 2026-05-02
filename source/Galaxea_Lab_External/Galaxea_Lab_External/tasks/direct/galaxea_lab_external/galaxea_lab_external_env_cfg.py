@@ -6,7 +6,7 @@
 from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
 
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
-from isaaclab.envs import DirectRLEnvCfg
+from isaaclab.envs import DirectRLEnvCfg, ViewerCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
@@ -53,6 +53,9 @@ class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
 
     # simulation
     sim: SimulationCfg = SimulationCfg(dt=sim_dt, render_interval=decimation)
+
+    # viewport camera (captured manually from Isaac Sim viewport)
+    viewer: ViewerCfg = ViewerCfg(eye=(1.935, 1.238, 1.911), lookat=(0.676, 0.131, 0.821))
 
     # robot(s)
     robot_bundle: RobotBundle = ACTIVE_ROBOT_BUNDLE

@@ -1214,6 +1214,10 @@
       upper="0"
       effort="100"
       velocity="0.25" />
+    <mimic
+      joint="left_gripper_finger_joint1"
+      multiplier="-1.0"
+      offset="0.0" />
   </joint>
   <link
     name="right_arm_base_link">
@@ -1837,5 +1841,9 @@
       upper="0"
       effort="100"
       velocity="0.25" />
+    <mimic
+      joint="right_gripper_finger_joint1"
+      multiplier="-1.0"
+      offset="0.0" />
   </joint>
 </robot>

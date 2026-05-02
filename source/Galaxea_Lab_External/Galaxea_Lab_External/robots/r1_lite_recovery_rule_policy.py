@@ -70,10 +70,12 @@ class R1LiteRecoveryRulePolicy:
             torch.tensor([-0.0465, 0.0268, 0.0], device=self.device),  # pin_2
         ]
 
-        self.TCP_offset_z = 1.1475 - 1.05661
-        self.TCP_offset_x = 0.3864 - 0.3785
+        # See R1LiteRulePolicy._compute_tcp_offset for rationale.
+        self.TCP_offset_x = None
+        self.TCP_offset_z = None
+        self.fingertip_extension = 0.045
         self.table_height = 0.9
-        self.grasping_height = -0.003
+        self.grasping_height = 0.005
         self.lifting_height = 0.2
 
         self.diff_ik_controller, self.left_arm_entity_cfg, self.left_gripper_entity_cfg = self.get_config("left")
@@ -315,6 +317,35 @@ class R1LiteRecoveryRulePolicy:
     def set_initial_root_state(self, initial_root_state: dict):
         self.initial_root_state = initial_root_state.copy()
 
+    def _compute_tcp_offset(self):
+        """Auto-compute TCP_offset_x and TCP_offset_z; see R1LiteRulePolicy."""
+        robot = self.scene["robot"]
+        link6_idx = robot.find_bodies("left_arm_link6")[0][0]
+        f1_idx = robot.find_bodies("left_gripper_finger_link1")[0][0]
+        f2_idx = robot.find_bodies("left_gripper_finger_link2")[0][0]
+
+        link6_pos = robot.data.body_state_w[0:1, link6_idx, 0:3]
+        link6_quat = robot.data.body_state_w[0:1, link6_idx, 3:7]
+        finger_mid_w = 0.5 * (
+            robot.data.body_state_w[0:1, f1_idx, 0:3]
+            + robot.data.body_state_w[0:1, f2_idx, 0:3]
+        )
+
+        finger_mid_local, _ = subtract_frame_transforms(
+            link6_pos,
+            link6_quat,
+            finger_mid_w,
+            torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=self.device),
+        )
+        finger_mid_local = finger_mid_local[0]
+
+        self.TCP_offset_x = -finger_mid_local[2].item()
+        self.TCP_offset_z = finger_mid_local[0].item() + self.fingertip_extension
+        print(
+            f"[R1LiteRecoveryRulePolicy] auto-tuned TCP offsets: "
+            f"x={self.TCP_offset_x:+.4f}m, z={self.TCP_offset_z:+.4f}m "
+            f"(finger_mid in link6 local: {finger_mid_local.tolist()})"
+        )
 
     def get_config(self, arm_name: str):
         # arm_name: left or right
@@ -946,6 +977,9 @@ class R1LiteRecoveryRulePolicy:
     def get_action(self):
         action = None
         joint_ids = None
+
+        if self.TCP_offset_x is None:
+            self._compute_tcp_offset()
 
         # Special logic for misplaced_fourth_gear state
         if self.initial_assembly_state == "misplaced_fourth_gear":

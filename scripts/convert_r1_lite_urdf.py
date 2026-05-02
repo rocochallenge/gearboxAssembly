@@ -98,6 +98,10 @@ def main() -> None:
             make_instanceable=True,
             self_collision=False,
             collider_type="convex_hull",
+            # IsaacLab forwards this to URDF importer's `parse_mimic` (the field name
+            # is misleading): True → parse <mimic> tags and apply PhysxMimicJointAPI,
+            # False (default) → ignore <mimic> entirely, joint2 becomes independent.
+            convert_mimic_joints_to_normal_joints=True,
             joint_drive=UrdfConverterCfg.JointDriveCfg(
                 target_type="position",
                 drive_type="force",

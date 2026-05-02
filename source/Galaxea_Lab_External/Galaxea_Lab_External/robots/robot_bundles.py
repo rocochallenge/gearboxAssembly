@@ -111,7 +111,7 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
         "right_gripper_finger_link2",
     ),
     torso_joint_pattern="torso_joint[1-3]",
-    initial_torso_pos=(0.0, 0.0, 0.0),
+    initial_torso_pos=(0.4, -0.8, -0.8),
     rule_policy_class=R1LiteRulePolicy,
     recovery_rule_policy_class=R1LiteRecoveryRulePolicy,
 )
