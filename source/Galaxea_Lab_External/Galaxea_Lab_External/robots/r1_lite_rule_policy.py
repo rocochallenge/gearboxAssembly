@@ -304,7 +304,7 @@ class R1LiteRulePolicy:
             command_type="pose",
             use_relative_mode=False,
             ik_method="dls",
-            ik_params={"lambda_val": 0.01},
+            ik_params={"lambda_val": 0.001},
         )
         controller = DifferentialIKController(
             diff_ik_cfg, num_envs=self.scene.num_envs, device=self.sim.device
@@ -772,13 +772,13 @@ class R1LiteRulePolicy:
             )
 
         if self.count >= count_step[1] and self.count < count_step[2]:
-            # Linearly interpolate Z from lift height down to grasp height over
-            # the full phase. Re-enabled after lifting_height was reduced — the
-            # short Z drop (now ~12 cm) is reachable in time even with smoothing.
+            # Reach the bottom in 1.0 s, then hold (alpha clamped at 1) for the
+            # remaining ~0.5 s of the phase so the gear has time to settle on
+            # the pin under gravity before the gripper opens.
             phase_start = int(count_step[1].item())
-            phase_end = int(count_step[2].item())
-            phase_progress = (self.count - phase_start) / max(1, phase_end - phase_start)
-            alpha = min(max(phase_progress, 0.0), 1.0)
+            descent_count = int(1.0 / self.sim_dt)
+            elapsed = self.count - phase_start
+            alpha = min(max(elapsed / max(1, descent_count), 0.0), 1.0)
             descent_z_offset = self.lifting_height * (1.0 - alpha) + mount_height_offset * alpha
             descent_target = target_position.clone()
             descent_target[:, 2] = target_position[:, 2] + descent_z_offset
@@ -878,11 +878,11 @@ class R1LiteRulePolicy:
             )
 
         if self.count >= count_step[1] and self.count < count_step[2]:
-            # Linearly interpolate Z over the full phase — see mount_gear_to_target.
+            # 1.0 s descent + 0.5 s hold — see mount_gear_to_target.
             phase_start = int(count_step[1].item())
-            phase_end = int(count_step[2].item())
-            phase_progress = (self.count - phase_start) / max(1, phase_end - phase_start)
-            alpha = min(max(phase_progress, 0.0), 1.0)
+            descent_count = int(1.0 / self.sim_dt)
+            elapsed = self.count - phase_start
+            alpha = min(max(elapsed / max(1, descent_count), 0.0), 1.0)
             descent_z_offset = self.lifting_height * (1.0 - alpha) + mount_height_offset * alpha
             descent_target = target_position.clone()
             descent_target[:, 2] = target_position[:, 2] + descent_z_offset
