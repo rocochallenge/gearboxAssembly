@@ -11,7 +11,7 @@ dependencies = [
     "isaaclab_rl[skrl]",
     "isaaclab_mimic",
     # Isaac Sim is NOT installed via pip. It is provided by the system-installed
-    # binary at $ISAAC_SIM_PATH (default /home/liuj/isaac-sim-5.1). Activate with
+    # binary at $ISAAC_SIM_PATH (default /home/hliu/isaac-sim-5.1). Activate with
     # `source scripts/env.sh` before running anything that touches isaacsim/omni.
     "torch==2.7.0",
     "torchvision==0.22.0",

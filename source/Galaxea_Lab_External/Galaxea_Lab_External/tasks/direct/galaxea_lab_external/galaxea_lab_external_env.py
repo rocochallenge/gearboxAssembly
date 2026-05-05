@@ -627,6 +627,10 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
        
         self.save_hdf5_file_name = '../data/data_' + datetime.now().strftime("%Y%m%d_%H%M%S") + '.hdf5'
 
+        # If the folder is not exist, create it
+        if not os.path.exists('../data'):
+            os.makedirs('../data')
+
 
         self.initial_root_state = self._randomize_object_positions([self.planetary_carrier, self.ring_gear, 
                                         self.sun_planetary_gear_1, self.sun_planetary_gear_2,

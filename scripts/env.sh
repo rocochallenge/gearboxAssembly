@@ -37,7 +37,7 @@ fi
 _env_sh_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 _proj_root="$(cd -- "${_env_sh_dir}/.." && pwd -P)"
 
-ISAAC_SIM_PATH="${ISAAC_SIM_PATH:-/home/liuj/isaac-sim-5.1}"
+ISAAC_SIM_PATH="${ISAAC_SIM_PATH:-/home/hliu/isaac-sim-5.1}"
 
 if [[ ! -f "${ISAAC_SIM_PATH}/setup_conda_env.sh" ]]; then
   echo "[env.sh] ISAAC_SIM_PATH='${ISAAC_SIM_PATH}' does not look like an Isaac Sim install (missing setup_conda_env.sh)" >&2

@@ -75,12 +75,12 @@ The `IsaacLab/` directory is a submodule pinned to tag `v2.3.0`.
 
 Best if you already have (or are willing to install) the Isaac Sim 5.1.0 binary tarball. It avoids pip-downloading ~10 GB of isaacsim wheels into the venv.
 
-1. **Download Isaac Sim 5.1.0** from NVIDIA's [Omniverse Launcher](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) (or unpack a tarball). Note its install directory; the examples below assume `/home/liuj/isaac-sim-5.1`.
+1. **Download Isaac Sim 5.1.0** from NVIDIA's [Omniverse Launcher](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) (or unpack a tarball). Note its install directory; the examples below assume `/home/hliu/isaac-sim-5.1`.
 
 2. **Link Isaac Lab to the binary install** (IsaacLab expects a `_isaac_sim` entry pointing at the Kit runtime):
 
     ```bash
-    ln -s /home/liuj/isaac-sim-5.1 IsaacLab/_isaac_sim
+    ln -s /home/hliu/isaac-sim-5.1 IsaacLab/_isaac_sim
     ```
 
 3. **Create the uv venv.** This installs Python 3.11, torch 2.7.0 + CUDA 12.8, IsaacLab 2.3.0 (editable from the submodule), and `Galaxea_Lab_External` (editable from `source/`). It does **not** install `isaacsim` — that comes from the binary:
@@ -241,7 +241,7 @@ ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE  # was GALAXEA_R1_BUND
 
 All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxea-Lab-Agent-Direct-v0`, and the `Gearbox-*` recovery tasks) read from `ACTIVE_ROBOT_BUNDLE`, so no other edits are needed. **Edit-then-restart is the supported workflow** — `ACTIVE_ROBOT_BUNDLE` is read at class-definition time by the env_cfg defaults, so reassigning it at runtime after the env_cfgs have been imported has no effect on already-defined classes.
 
-**Caveat — rule-based agent on R1_Lite.** `r1_lite_rule_policy.py` and `r1_lite_recovery_rule_policy.py` are forks of the R1 policies with mechanical joint-name renames so the env loads, but their pose/offset constants are still tuned for R1 dimensions. Running `rule_based_agent.py` against R1_Lite without `--no_action` will produce wrong motions. Use `--no_action` to inspect the scene visually until the constants are re-tuned.
+**Caveat — rule-based agent on R1_Lite.** `r1_lite_rule_policy.py` and `r1_lite_recovery_rule_policy.py` are forks of the R1 policies with mechanical joint-name renames so the env loads, but their pose/offset constants are mainly tuned for R1 dimensions. Running `rule_based_agent.py` against R1_Lite without `--no_action` may produce unreachable motions. Use `--no_action` to inspect the scene visually.
 
 **Caveat — R1_Lite head cameras.** The vendor URDF defines `camera_head_left_link` (collision only, no visual) and `camera_head_right_link` (empty link, no visual / collision) and does not reference the `camera_head_*_link.STL` meshes via `<visual>` tags. The `Camera` sensor in the env still attaches to those frames correctly, but the rendered scene will not show a visible camera body for the head. STL files for both head cameras are committed under `assets/Robots/R1_Lite/meshes/` and can be wired in via a URDF edit + re-conversion if a visible head body is needed.
 
