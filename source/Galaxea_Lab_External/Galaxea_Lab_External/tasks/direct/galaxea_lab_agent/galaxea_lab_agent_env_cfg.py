@@ -46,8 +46,9 @@ class GalaxeaLabAgentEnvCfg(DirectRLEnvCfg):
     decimation = 5
     episode_length_s = 60.0
     # - spaces definition
-    action_space = 14
-    observation_space = 14
+    # per-arm joints + one finger joint per gripper (6+6+1+1 = 14 for R1/R1_Lite, 16 for R1Pro)
+    action_space = 2 * ACTIVE_ROBOT_BUNDLE.num_arm_joints + 2
+    observation_space = 2 * ACTIVE_ROBOT_BUNDLE.num_arm_joints + 2
     state_space = 0
     num_rerenders_on_reset = 5
 

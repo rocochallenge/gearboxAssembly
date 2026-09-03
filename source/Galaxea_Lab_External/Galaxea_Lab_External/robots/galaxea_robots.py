@@ -398,3 +398,177 @@ GALAXEA_R1_LITE_HAND_CAMERA_CFG = CameraCfg(
         convention="opengl",
     ),
 )
+
+
+##
+# R1Pro (vendor URDF: r1pro_2026, G1Z gripper). Coexists with R1 and R1_Lite.
+#
+# Converted with scripts/convert_r1_pro_urdf.py. Compared with R1_Lite:
+#   - 7-DOF arms (left/right_arm_joint1..7), IK end-effector is *_arm_link7.
+#   - 4-DOF torso: joint1..3 pitch, joint4 waist yaw (kept at 0).
+#   - Gripper extends along link7 -Z; "gripper down" is the identity link7 pose.
+#   - Fingers: joint1 in [0, 0.065] (0 = closed), joint2 mimics joint1 with -1.
+#   - Arm reach (shoulder -> link7) is 0.30..0.57 m and the gripper adds
+#     ~0.27 m below link7, so the torso lean below was chosen by offline
+#     URDF-IK against the randomized scene (carrier fixed at (0.45, 0), gears
+#     at x in [0.45, 0.65] and |y| <= 0.4 on each arm's side, lifts up to
+#     +0.17 m). All of it is reachable with the gripper vertical except a gear
+#     at the far centre (x ~= 0.65, |y| < 0.05), which is ~3 cm short — see
+#     docs/r1_pro_integration.md.
+##
+
+GALAXEA_R1_PRO_CFG = ArticulationCfg(
+    prim_path="{ENV_REGEX_NS}/Robot",
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"{GALAXEA_LAB_ASSETS_DIR}/Robots/R1_Pro/r1_pro.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            max_depenetration_velocity=5.0,
+            linear_damping=0.1,
+            angular_damping=0.1,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=3666.0,
+            enable_gyroscopic_forces=False,
+            solver_position_iteration_count=128,
+            solver_velocity_iteration_count=128,
+            max_contact_impulse=1e3,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=False,
+            solver_position_iteration_count=128,
+            solver_velocity_iteration_count=128,
+        ),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.05, rest_offset=0.0),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        joint_pos={
+            # "Ready" pose: link7 at (0.47, +-0.46, 1.26) world, i.e. 35 cm above
+            # the table top (the G1Z gripper hangs 0.27 m below link7 — the
+            # fingertips must clear the table at z = 0.909). Gripper points
+            # straight down with link7 +X yawed -135/+135 deg (left/right),
+            # matching R1ProRulePolicy's GRIPPER_DOWN_QUAT*; every arm joint
+            # >= 0.39 rad from its limit; right arm is the mirror of the left.
+            # Found by offline IK on the URDF; in-sim FK agrees to < 1 cm.
+            "left_arm_joint1": -1.767,
+            "left_arm_joint2":  1.370,
+            "left_arm_joint3": -1.860,
+            "left_arm_joint4": -1.669,
+            "left_arm_joint5": -0.321,
+            "left_arm_joint6": -0.401,
+            "left_arm_joint7": -1.044,
+            "left_gripper_finger_joint1": 0.055,
+            "right_arm_joint1": -1.767,
+            "right_arm_joint2": -1.370,
+            "right_arm_joint3":  1.860,
+            "right_arm_joint4": -1.669,
+            "right_arm_joint5":  0.321,
+            "right_arm_joint6": -0.401,
+            "right_arm_joint7":  1.044,
+            "right_gripper_finger_joint1": 0.055,
+            # Torso: link1 23 deg fwd, link2 back to vertical, upper body 23 deg
+            # fwd -> shoulders at ~(0.21, +-0.17, 1.39), head at (0.24, 1.46),
+            # camera looking ~45 deg down onto the table. Higher shoulders than
+            # the first attempt (1.29) so that gears spawning straight ahead of
+            # a shoulder at x ~= 0.45 stay outside the elbow's ~0.30 m minimum
+            # fold radius, while x = 0.65 corners stay inside the 0.57 m reach.
+            "torso_joint1":  0.4,
+            "torso_joint2": -0.4,
+            "torso_joint3": -0.4,
+            "torso_joint4":  0.0,
+        },
+        # Robot base at the world origin (the table's front edge is at x = 0.34).
+        pos=(0.0, 0.0, 0.0),
+        rot=(1.0, 0.0, 0.0, 0.0),
+    ),
+    actuators={
+        "r1_pro_arms": ImplicitActuatorCfg(
+            joint_names_expr=[".*_arm_joint[1-6]"],
+            stiffness=1050.0,
+            damping=100.0,
+            friction=0.0,
+            armature=0.1,
+            effort_limit_sim=87,
+            velocity_limit_sim=10,
+        ),
+        "r1_pro_eefs": ImplicitActuatorCfg(
+            joint_names_expr=[".*_arm_joint7"],
+            stiffness=1050.0,
+            damping=100.0,
+            friction=0.0,
+            armature=0.1,
+            effort_limit_sim=87,
+            velocity_limit_sim=10,
+        ),
+        "r1_pro_grippers": ImplicitActuatorCfg(
+            # joint2 mimics joint1 (URDF <mimic> tag, multiplier=-1, as for R1_Lite;
+            # a rigid PhysX mimic joint after conversion) so only joint1 is driven.
+            joint_names_expr=[".*_gripper_finger_joint1"],
+            effort_limit_sim=100.0,
+            velocity_limit_sim=0.07,
+            stiffness=25000.0,
+            damping=1000.0,
+            friction=0.2,
+            armature=0.2,
+        ),
+        "r1_pro_torso": ImplicitActuatorCfg(
+            joint_names_expr=["torso_joint[1-4]"],
+            stiffness=1050.0,
+            damping=100.0,
+            friction=0.0,
+            armature=0.0,
+            effort_limit_sim=87,
+            velocity_limit_sim=124.6,
+        ),
+        "r1_pro_wheels": ImplicitActuatorCfg(
+            joint_names_expr=["(steer|wheel)_motor_joint[1-3]"],
+            stiffness=0.0,
+            damping=0.0,
+            effort_limit_sim=0.0,
+            velocity_limit_sim=0.0,
+        ),
+    },
+)
+
+# The vendor camera links are ROS optical frames (+Z = optical axis, +X = image
+# right, +Y = image down): camera_head_*_link rpy=(-1.92, 0, -1.57) relative to
+# head_link and *_d405_link rpy=(2.44, 0, -1.57) relative to the gripper link.
+# Hence convention="ros" with an identity offset (an "opengl" offset would look
+# along -Z, i.e. away from the scene).
+GALAXEA_R1_PRO_HEAD_CAMERA_CFG = CameraCfg(
+    prim_path="/World/envs/env_.*/Robot/camera_head_left_link/head_cam",
+    update_period=0.0,
+    height=240,
+    width=320,
+    data_types=["rgb", "distance_to_image_plane"],
+    spawn=sim_utils.PinholeCameraCfg(
+        focal_length=2.12,
+        focus_distance=100.0,
+        horizontal_aperture=6.055,
+        clipping_range=(0.01, 100),
+    ),
+    offset=CameraCfg.OffsetCfg(
+        pos=(0.0, 0.0, 0.0),
+        rot=(1.0, 0.0, 0.0, 0.0),
+        convention="ros",
+    ),
+)
+
+GALAXEA_R1_PRO_HAND_CAMERA_CFG = CameraCfg(
+    prim_path="/World/envs/env_.*/Robot/left_d405_link/left_hand_cam",
+    update_period=0.0,
+    height=240,
+    width=320,
+    data_types=["rgb", "distance_to_image_plane"],
+    spawn=sim_utils.PinholeCameraCfg(
+        focal_length=2.12,
+        focus_distance=100.0,
+        horizontal_aperture=6.055,
+        clipping_range=(0.01, 100),
+    ),
+    offset=CameraCfg.OffsetCfg(
+        pos=(0.0, 0.0, 0.0),
+        rot=(1.0, 0.0, 0.0, 0.0),
+        convention="ros",
+    ),
+)
