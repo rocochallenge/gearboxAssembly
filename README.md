@@ -227,25 +227,33 @@ Use this if you prefer a fully self-contained venv at the cost of disk (~18 GB t
     python scripts/rule_based_agent.py --task=Gearbox-Recovery-Inclinedfourth --enable_cameras --no_action
     ```
 
-### Switching between R1 and R1_Lite
+### Switching between R1, R1_Lite and R1Pro
 
-The repo ships with two robot configs:
-- `GALAXEA_R1_BUNDLE` (default) — the original Galaxea R1 (`r1_DVT_*.usd`).
-- `GALAXEA_R1_LITE_BUNDLE` — the new R1_Lite (mobile-base variant; `r1_lite.usd`, base welded for tabletop tasks).
+The repo ships with three robot configs:
+- `GALAXEA_R1_BUNDLE` — the original Galaxea R1 (`r1_DVT_*.usd`).
+- `GALAXEA_R1_LITE_BUNDLE` — R1_Lite (mobile-base variant; `r1_lite.usd`, base welded for tabletop tasks).
+- `GALAXEA_R1_PRO_BUNDLE` (default) — R1Pro 2026 with the G1Z gripper (`r1_pro.usd`, converted from the vendor URDF at https://github.com/userguide-galaxea/URDF; 7-DOF arms, 4-DOF torso, base welded).
 
 To switch, edit one line in `source/Galaxea_Lab_External/Galaxea_Lab_External/robots/robot_bundles.py`:
 
 ```python
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE  # was GALAXEA_R1_BUNDLE
+ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_PRO_BUNDLE  # or GALAXEA_R1_LITE_BUNDLE / GALAXEA_R1_BUNDLE
 ```
 
-All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxea-Lab-Agent-Direct-v0`, and the `Gearbox-*` recovery tasks) read from `ACTIVE_ROBOT_BUNDLE`, so no other edits are needed. **Edit-then-restart is the supported workflow** — `ACTIVE_ROBOT_BUNDLE` is read at class-definition time by the env_cfg defaults, so reassigning it at runtime after the env_cfgs have been imported has no effect on already-defined classes.
+All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxea-Lab-Agent-Direct-v0`, and the `Gearbox-*` recovery tasks) read from `ACTIVE_ROBOT_BUNDLE`, so no other edits are needed. The action/observation vector size also follows the bundle (`2 * num_arm_joints + 2`: 14 for R1/R1_Lite, 16 for R1Pro). **Edit-then-restart is the supported workflow** — `ACTIVE_ROBOT_BUNDLE` is read at class-definition time by the env_cfg defaults, so reassigning it at runtime after the env_cfgs have been imported has no effect on already-defined classes.
 
 **Caveat — rule-based agent on R1_Lite.** `r1_lite_rule_policy.py` and `r1_lite_recovery_rule_policy.py` are forks of the R1 policies with mechanical joint-name renames so the env loads, but their pose/offset constants are mainly tuned for R1 dimensions. Running `rule_based_agent.py` against R1_Lite without `--no_action` may produce unreachable motions. Use `--no_action` to inspect the scene visually.
 
 **Caveat — R1_Lite head cameras.** The vendor URDF defines `camera_head_left_link` (collision only, no visual) and `camera_head_right_link` (empty link, no visual / collision) and does not reference the `camera_head_*_link.STL` meshes via `<visual>` tags. The `Camera` sensor in the env still attaches to those frames correctly, but the rendered scene will not show a visible camera body for the head. STL files for both head cameras are committed under `assets/Robots/R1_Lite/meshes/` and can be wired in via a URDF edit + re-conversion if a visible head body is needed.
 
-### Re-running the R1_Lite URDF→USD conversion
+**R1Pro notes.**
+- The rule policies for R1Pro (`R1ProRulePolicy`, `R1ProRecoveryRulePolicy` in `robots/r1_pro_rule_policy.py`) are thin subclasses of the R1_Lite policies: they only override the robot-frame class attributes (`EE_LINK_SUFFIX = "_arm_link7"`, gripper axis `-Z`, a mirrored ∓90° "gripper down" wrist yaw per arm, IK-based tooth-meshing wiggle, fingertip extension, half-size DLS steps and a 1.25× phase timetable). Everything task-related is shared.
+- R1Pro's arm reach (shoulder to `arm_link7`) spans only 0.30–0.57 m and the G1Z gripper adds ~0.27 m below `arm_link7`, so `GALAXEA_R1_PRO_CFG`'s torso lean, arm ready pose and the policies' ∓135° wrist yaw were chosen by offline URDF-IK against the env's randomized layout (carrier fixed at (0.45, 0), gears per side). If you move the table or change the randomization, re-check reach first — the method and the remaining unreachable corner are in `docs/r1_pro_integration.md` §6 and §10.
+- The vendor URDF ships the four `*_gripper_finger_joint*` prismatic joints with zero limits/effort and no `<mimic>`; the committed `assets/Robots/R1_Pro/urdf/r1pro_2026.urdf` gives them the same treatment as R1_Lite's URDF (joint 1 in `[0, 0.065]`, joint 2 in `[-0.065, 0]` with a `<mimic multiplier=-1>` on joint 1), and only joint 1 is actuated. The Isaac Sim 5.1 importer emits that mimic as a soft 25 Hz PhysX spring, so `scripts/convert_r1_pro_urdf.py` rewrites it to a rigid constraint after conversion. `0.0` is closed, `0.055` is open. The finger collision meshes are replaced by tight pad boxes at conversion time; the convex hull of the vendor finger mesh overlaps the centreline and squeezes gears out.
+- R1Pro's camera links are ROS optical frames, so the camera cfgs use `convention="ros"` with an identity offset.
+- Status: the rule-based agent picks, carries and seats gears on the carrier pins with R1Pro (scores of 1–2 in headless test episodes), but it is not yet as reliable as on R1_Lite — see the known gaps in `docs/r1_pro_integration.md` (far-centre gears out of reach, occasional slip on long cross-body swings, right-arm reach to pins that rotate to the far side of the carrier).
+
+### Re-running the R1_Lite / R1Pro URDF→USD conversion
 
 If the vendor URDF under `source/Galaxea_Lab_External/assets/Robots/R1_Lite/urdf/` changes, regenerate the USD:
 
@@ -262,6 +270,12 @@ The script rewrites `package://mobiman/...` mesh refs to relative paths in a tem
 - `config.yaml`, `.asset_hash` — metadata.
 
 All 5 `*.usd` files route through Git LFS automatically.
+
+The R1Pro conversion is the same shape (`scripts/convert_r1_pro_urdf.py`, vendor package under `assets/Robots/R1_Pro/`, output bundle `assets/Robots/R1_Pro/r1_pro.usd` + `configuration/r1_pro_*.usd`), with two extra URDF patches applied to the temp copy: `package://r1pro_urdf/meshes/` → `../meshes/`, and the gripper finger joint limits/mimic described above.
+
+```bash
+python scripts/convert_r1_pro_urdf.py
+```
 
 ### Set up IDE (Optional)
 

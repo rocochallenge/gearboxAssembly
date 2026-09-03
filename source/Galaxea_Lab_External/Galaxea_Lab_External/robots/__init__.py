@@ -14,4 +14,5 @@ from .galaxea_rule_policy import *
 from .recovery_rule_policy import *
 from .r1_lite_rule_policy import *
 from .r1_lite_recovery_rule_policy import *
+from .r1_pro_rule_policy import *
 from .robot_bundles import *

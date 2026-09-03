@@ -2,11 +2,14 @@
 
 Joint-name literals were mechanically renamed (_gripper_axis1 ->
 _gripper_finger_joint1) so the env loads against R1_Lite's
-articulation. The geometry constants below (target poses, approach
-offsets, mounting plans) are still tuned for R1 dimensions; they will
-produce wrong motions on R1_Lite until re-tuned. Use --no_action when
-running rule_based_agent against R1_Lite to inspect the scene without
-firing this policy.
+articulation, and the grasp/mount trajectories were re-tuned for
+R1_Lite's geometry (see docs/r1_lite_integration.md).
+
+Everything that depends on the robot's frame conventions (EE link name,
+gripper axis, "gripper down" quaternion, wrist-roll joint, fingertip
+extension) is exposed as class attributes at the top of
+``R1LiteRulePolicy`` so other Galaxea robots can subclass it — see
+``r1_pro_rule_policy.py`` for the R1Pro variant.
 """
 
 import torch
@@ -26,7 +29,7 @@ from isaaclab.controllers import (
     DifferentialIKControllerCfg,
 )
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.utils.math import subtract_frame_transforms
+from isaaclab.utils.math import quat_apply, quat_error_magnitude, quat_from_angle_axis, quat_mul, subtract_frame_transforms
 
 import carb.input
 from carb.input import KeyboardEventType
@@ -46,6 +49,57 @@ from isaaclab.sim.spawners.materials import spawn_rigid_body_material
 from isaaclab.sim import SimulationContext
 
 class R1LiteRulePolicy:
+    # ------------------------------------------------------------------
+    # Robot-frame parameters. Subclasses for other Galaxea robots override
+    # these (see r1_pro_rule_policy.py); everything below reads them so the
+    # task logic itself stays robot-agnostic.
+    # ------------------------------------------------------------------
+    #: Suffix of the arm body used as the differential-IK end-effector target.
+    EE_LINK_SUFFIX: str = "_arm_link6"
+    #: Suffix of the independently driven gripper finger joint (the other finger mimics it).
+    GRIPPER_JOINT_SUFFIX: str = "_gripper_finger_joint1"
+    #: Unit vector, in the EE link's local frame, along which the gripper/fingers extend.
+    GRIPPER_AXIS_LOCAL: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    #: Quaternion (w, x, y, z) that rotates the EE link so ``GRIPPER_AXIS_LOCAL`` points world -Z
+    #: (gripper pointing straight down). +90 deg about Y for R1_Lite's link6 +X gripper.
+    GRIPPER_DOWN_QUAT: tuple[float, float, float, float] = (0.7071068, 0.0, 0.7071068, 0.0)
+    #: Optional right-arm override of ``GRIPPER_DOWN_QUAT`` (None -> same as left). Lets a
+    #: redundant arm use a mirrored wrist yaw per side (R1Pro points link7 +X inward).
+    GRIPPER_DOWN_QUAT_RIGHT: tuple[float, float, float, float] | None = None
+    #: Unit vector, in the EE link's local frame, along which the fingers open/close. The
+    #: finger-midpoint component along it is ignored when auto-tuning the TCP (the mimic
+    #: finger has not settled at t=0, so the raw midpoint is biased along this axis).
+    FINGER_TRAVEL_AXIS_LOCAL: tuple[float, float, float] = (0.0, 1.0, 0.0)
+    #: Index (within the arm joint list) of the joint that spins the gripper about its own axis.
+    #: Used by the joint-space "wiggle to mesh teeth" step; ignored when ``ROTATE_VIA_IK``.
+    GRIPPER_ROLL_JOINT_INDEX: int = 5
+    #: When True, the mesh-teeth wiggle rotates the IK target about the vertical TCP axis
+    #: instead of driving a single wrist joint (needed for 7-DOF wrists whose last joint is
+    #: not aligned with the gripper axis).
+    ROTATE_VIA_IK: bool = False
+    #: Distance from the finger-link origins to the grasp point along ``GRIPPER_AXIS_LOCAL``.
+    FINGERTIP_EXTENSION: float = 0.045
+    #: Fraction of the differential-IK (DLS) Newton step applied per control update.
+    #: 1.0 reproduces the original behaviour; < 1 damps the wild first steps of a
+    #: redundant arm whose joints would otherwise slam into their limits.
+    IK_STEP_FRACTION: float = 1.0
+    #: Per-joint cap (rad) on the commanded IK step per control update (None = no cap).
+    #: Keeps a large reach from turning into a velocity-limit-bound detour without
+    #: slowing down small corrections the way IK_STEP_FRACTION < 1 does.
+    IK_MAX_JOINT_STEP: float | None = None
+    #: Multiplier on every phase duration in the mounting timetable (1.0 = R1_Lite tuning).
+    PHASE_TIME_SCALE: float = 1.0
+    #: Finger joint target used for "open" (per finger, m). Close is always 0.0.
+    GRIPPER_OPEN_POS: float = 0.04
+    #: When True, each mount phase measures where the held object actually sits
+    #: relative to the EE at its start and aims the pin with that offset (x, y)
+    #: instead of the nominal centred-TCP offset. Makes mounts robust to
+    #: off-centre grasps (e.g. a gear clamped against one pad).
+    MOUNT_USES_IN_HAND_OFFSET: bool = False
+    #: When True, ``pick_up_target_gear`` aims at the object's *current* pose instead of
+    #: the pose captured at reset (objects get nudged by earlier phases).
+    PICK_USES_CURRENT_POSE: bool = False
+
     def __init__(self, sim: sim_utils.SimulationContext, scene: InteractiveScene,
     obj_dict: dict):
         self.sim = sim
@@ -77,9 +131,9 @@ class R1LiteRulePolicy:
         # here were R1-tuned and gave R1_Lite the wrong grasp pose.
         self.TCP_offset_x = None
         self.TCP_offset_z = None
-        # Distance from finger_link origin to actual fingertip along finger +X.
+        # Distance from finger_link origin to actual fingertip along the gripper axis.
         # Tune this if grasp Z is still slightly off after the auto-tune.
-        self.fingertip_extension = 0.045
+        self.fingertip_extension = self.FINGERTIP_EXTENSION
         self.table_height = 0.9
         self.grasping_height = 0.005
         self.lifting_height = 0.12
@@ -124,7 +178,7 @@ class R1LiteRulePolicy:
         self.count = 0
 
         # Time for intital stabilization
-        self.time_step_0 = 0.2
+        self.time_step_0 = 0.2 * self.PHASE_TIME_SCALE
         self.count_step_0 = int(self.time_step_0 / self.sim_dt)
         print(f"count_step_0: {self.count_step_0}")
 
@@ -134,7 +188,7 @@ class R1LiteRulePolicy:
         # 3. Close the gripper
         # 4. Move the arm to the target position above the gear and keep the orientation
         # time_step_1 = torch.tensor([0.0, 5.0, 1.0, 2.0, 1.0, 2.0], device=sim.device)
-        self.time_step_1 = torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
+        self.time_step_1 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_1 = torch.cumsum(self.time_step_1, dim=0) + self.time_step_0
         self.count_step_1 = self.time_step_1 / self.sim_dt
         self.count_step_1 = self.count_step_1.int()
@@ -144,49 +198,49 @@ class R1LiteRulePolicy:
         # Phase-0 (move-to-mount lift) extended from 0.5s -> 1.5s to halve EE
         # velocity during the cross-body swing — at 0.54 m/s the gear was slipping
         # ~10cm out of the gripper from inertia. Subsequent phases stay at 0.5s.
-        self.time_step_2 = torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
+        self.time_step_2 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
         self.time_step_2 = torch.cumsum(self.time_step_2, dim=0) + self.time_step_1[-1]
         self.count_step_2 = self.time_step_2 / self.sim_dt
         self.count_step_2 = self.count_step_2.int()
         print(f"count_step_2: {self.count_step_2}")
 
         # Pick up the 2nd gear
-        self.time_step_3 = torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
+        self.time_step_3 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_3 = torch.cumsum(self.time_step_3, dim=0) + self.time_step_2[-1]
         self.count_step_3 = self.time_step_3 / self.sim_dt
         self.count_step_3 = self.count_step_3.int()
         print(f"count_step_3: {self.count_step_3}")
 
         # Mount the 2nd gear to the planetary_carrier (slow swing — see time_step_2)
-        self.time_step_4 = torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
+        self.time_step_4 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
         self.time_step_4 = torch.cumsum(self.time_step_4, dim=0) + self.time_step_3[-1]
         self.count_step_4 = self.time_step_4 / self.sim_dt
         self.count_step_4 = self.count_step_4.int()
         print(f"count_step_4: {self.count_step_4}")
 
         # Reset left arm
-        self.time_step_5 = torch.tensor([0.0, 0.5], device=sim.device)
+        self.time_step_5 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5], device=sim.device)
         self.time_step_5 = torch.cumsum(self.time_step_5, dim=0) + self.time_step_4[-1]
         self.count_step_5 = self.time_step_5 / self.sim_dt
         self.count_step_5 = self.count_step_5.int()
         print(f"count_step_5: {self.count_step_5}")
 
         # Pick up the 3rd gear
-        self.time_step_6 = torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
+        self.time_step_6 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_6 = torch.cumsum(self.time_step_6, dim=0) + self.time_step_5[-1]
         self.count_step_6 = self.time_step_6 / self.sim_dt
         self.count_step_6 = self.count_step_6.int()
         print(f"count_step_6: {self.count_step_6}")
 
         # Mount the 3rd gear to the planetary_carrier (slow swing — see time_step_2)
-        self.time_step_7 = torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
+        self.time_step_7 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
         self.time_step_7 = torch.cumsum(self.time_step_7, dim=0) + self.time_step_6[-1]
         self.count_step_7 = self.time_step_7 / self.sim_dt
         self.count_step_7 = self.count_step_7.int()
         print(f"count_step_7: {self.count_step_7}")
 
         # Pick up the 4th gear
-        self.time_step_8 = torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
+        self.time_step_8 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_8 = torch.cumsum(self.time_step_8, dim=0) + self.time_step_7[-1]
         self.count_step_8 = self.time_step_8 / self.sim_dt
         self.count_step_8 = self.count_step_8.int()
@@ -194,28 +248,28 @@ class R1LiteRulePolicy:
 
         # Mount the 4th gear to the planetary_carrier.
         # Another rotation is performed to aid the insertion (slow swing — see time_step_2)
-        self.time_step_9 = torch.tensor([0.0, 1.5, 1.5, 5.0, 0.5, 0.5], device=sim.device)
+        self.time_step_9 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 5.0, 0.5, 0.5], device=sim.device)
         self.time_step_9 = torch.cumsum(self.time_step_9, dim=0) + self.time_step_8[-1]
         self.count_step_9 = self.time_step_9 / self.sim_dt
         self.count_step_9 = self.count_step_9.int()
         print(f"count_step_9: {self.count_step_9}")
 
         # Reset right arm
-        self.time_step_10 = torch.tensor([0.0, 0.5], device=sim.device)
+        self.time_step_10 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5], device=sim.device)
         self.time_step_10 = torch.cumsum(self.time_step_10, dim=0) + self.time_step_9[-1]
         self.count_step_10 = self.time_step_10 / self.sim_dt
         self.count_step_10 = self.count_step_10.int()
         print(f"count_step_10: {self.count_step_10}")
 
         # Pick up the big ring gear
-        self.time_step_11 = torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
+        self.time_step_11 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_11 = torch.cumsum(self.time_step_11, dim=0) + self.time_step_10[-1]
         self.count_step_11 = self.time_step_11 / self.sim_dt
         self.count_step_11 = self.count_step_11.int()
         print(f"count_step_11: {self.count_step_11}")
 
         # Mount the ring on the carrier (slow swing — see time_step_2)
-        self.time_step_12 = torch.tensor([0.0, 1.5, 1.5, 3.0, 0.5, 0.5], device=sim.device)
+        self.time_step_12 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 3.0, 0.5, 0.5], device=sim.device)
         self.time_step_12 = torch.cumsum(self.time_step_12, dim=0) + self.time_step_11[-1]
         self.count_step_12 = self.time_step_12 / self.sim_dt
         self.count_step_12 = self.count_step_12.int()
@@ -223,14 +277,14 @@ class R1LiteRulePolicy:
         
 
         # Pick up the reducer
-        self.time_step_13 = torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
+        self.time_step_13 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_13 = torch.cumsum(self.time_step_13, dim=0) + self.time_step_12[-1]
         self.count_step_13 = self.time_step_13 / self.sim_dt
         self.count_step_13 = self.count_step_13.int()
         print(f"count_step_13: {self.count_step_13}")
 
         # Mount the reducer to the gear (slow swing — see time_step_2)
-        self.time_step_14 = torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
+        self.time_step_14 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
         self.time_step_14 = torch.cumsum(self.time_step_14, dim=0) + self.time_step_13[-1]
         self.count_step_14 = self.time_step_14 / self.sim_dt
         self.count_step_14 = self.count_step_14.int()
@@ -249,42 +303,89 @@ class R1LiteRulePolicy:
         self.initial_root_state = initial_root_state.copy()
 
 
+    def _arm_key(self, arm_entity_cfg: SceneEntityCfg) -> str:
+        """'left' or 'right' for a resolved arm entity cfg (compares joint ids, not
+        a hard-coded first-joint index, so it holds for any joint ordering)."""
+        return "left" if list(arm_entity_cfg.joint_ids) == list(self.left_arm_entity_cfg.joint_ids) else "right"
+
+    def _phase_started(self, boundary) -> bool:
+        """True on the first ``get_action`` call at or after ``boundary`` (a phase-start
+        count). ``self.count`` advances by the env's decimation between calls, so the
+        original ``self.count == boundary`` test silently misses boundaries that are not
+        multiples of the decimation (any ``PHASE_TIME_SCALE`` other than 1.0)."""
+        return self._phase_prev_count < int(boundary) <= self.count
+
+    def _gripper_down_quat_for(self, arm: str) -> torch.Tensor:
+        """"Gripper down" EE orientation for ``arm`` ('left'/'right') as a (1, 4) tensor."""
+        q = self.GRIPPER_DOWN_QUAT
+        if arm == "right" and self.GRIPPER_DOWN_QUAT_RIGHT is not None:
+            q = self.GRIPPER_DOWN_QUAT_RIGHT
+        return torch.tensor([list(q)], device=self.sim.device)
+
+    def _gripper_down_quat(self, arm_entity_cfg: SceneEntityCfg | None = None) -> torch.Tensor:
+        """"Gripper down" EE orientation for the given arm (left if None), shape (1, 4)."""
+        return self._gripper_down_quat_for("left" if arm_entity_cfg is None else self._arm_key(arm_entity_cfg))
+
+    def _tcp_offset(self, arm_entity_cfg: SceneEntityCfg) -> torch.Tensor:
+        """World-frame offset to add to a TCP target to get the EE (IK) target, shape (1, 3).
+        Computed lazily by ``_compute_tcp_offset`` (needs body poses from the sim)."""
+        if self.TCP_offset_x is None:
+            self._compute_tcp_offset()
+        return self.tcp_offsets[self._arm_key(arm_entity_cfg)]
+
     def _compute_tcp_offset(self):
         """Auto-compute TCP_offset_x and TCP_offset_z from finger-pair geometry.
 
-        IK targets ``arm_link6``, but the gear has to end up between the
-        fingertips. We average the two finger origins, express the midpoint
-        in link6's local frame, then convert to world-frame offsets:
+        IK targets the EE link (``EE_LINK_SUFFIX``), but the gear has to end up
+        between the fingertips. We average the two finger origins, express the
+        midpoint in the EE link's local frame, push it ``fingertip_extension``
+        further along ``GRIPPER_AXIS_LOCAL``, and rotate that local offset into
+        the world frame using ``GRIPPER_DOWN_QUAT`` (the EE orientation used for
+        every grasp). The EE target is then ``TCP_target - offset_world``, i.e.
 
-            TCP_offset_z = +Lx + fingertip_extension   (link6 +X -> world -Z)
-            TCP_offset_x = -Lz                          (link6 +Z -> world +X)
+            TCP_offset_x = -offset_world.x
+            TCP_offset_z = -offset_world.z
+
+        For R1_Lite (gripper along link6 +X, +90 deg-Y down-quat) this reduces to
+        the previous closed form ``TCP_offset_z = Lx + ext``, ``TCP_offset_x = -Lz``.
         """
         robot = self.scene["robot"]
-        link6_idx = robot.find_bodies("left_arm_link6")[0][0]
+        ee_idx = robot.find_bodies(f"left{self.EE_LINK_SUFFIX}")[0][0]
         f1_idx = robot.find_bodies("left_gripper_finger_link1")[0][0]
         f2_idx = robot.find_bodies("left_gripper_finger_link2")[0][0]
 
-        link6_pos = robot.data.body_state_w[0:1, link6_idx, 0:3]
-        link6_quat = robot.data.body_state_w[0:1, link6_idx, 3:7]
+        ee_pos = robot.data.body_state_w[0:1, ee_idx, 0:3]
+        ee_quat = robot.data.body_state_w[0:1, ee_idx, 3:7]
         finger_mid_w = 0.5 * (
             robot.data.body_state_w[0:1, f1_idx, 0:3]
             + robot.data.body_state_w[0:1, f2_idx, 0:3]
         )
 
         finger_mid_local, _ = subtract_frame_transforms(
-            link6_pos,
-            link6_quat,
+            ee_pos,
+            ee_quat,
             finger_mid_w,
             torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=self.device),
         )
-        finger_mid_local = finger_mid_local[0]
+        axis_local = torch.tensor([list(self.GRIPPER_AXIS_LOCAL)], device=self.device)
+        travel_local = torch.tensor([list(self.FINGER_TRAVEL_AXIS_LOCAL)], device=self.device)
+        # Drop the open/close component (mimic finger may not have settled yet).
+        finger_mid_local = finger_mid_local - (finger_mid_local * travel_local).sum(-1, keepdim=True) * travel_local
+        tcp_local = finger_mid_local + self.fingertip_extension * axis_local
 
-        self.TCP_offset_x = -finger_mid_local[2].item()
-        self.TCP_offset_z = finger_mid_local[0].item() + self.fingertip_extension
+        # Per-arm world offsets (EE = TCP + offset); the arms may use different down-quats.
+        self.tcp_offsets = {}
+        for arm in ("left", "right"):
+            offset_world = quat_apply(self._gripper_down_quat_for(arm).to(self.device), tcp_local)
+            self.tcp_offsets[arm] = (-offset_world).to(self.sim.device)
+        # Kept for backwards compat / logging (left arm, x and z components).
+        self.TCP_offset_x = self.tcp_offsets["left"][0, 0].item()
+        self.TCP_offset_z = self.tcp_offsets["left"][0, 2].item()
         print(
-            f"[R1LiteRulePolicy] auto-tuned TCP offsets: "
-            f"x={self.TCP_offset_x:+.4f}m, z={self.TCP_offset_z:+.4f}m "
-            f"(finger_mid in link6 local: {finger_mid_local.tolist()})"
+            f"[{type(self).__name__}] auto-tuned TCP offsets: "
+            f"left={[round(v, 4) for v in self.tcp_offsets['left'][0].tolist()]} "
+            f"right={[round(v, 4) for v in self.tcp_offsets['right'][0].tolist()]} "
+            f"(finger_mid in {self.EE_LINK_SUFFIX[1:]} local: {finger_mid_local[0].tolist()})"
         )
 
     def get_config(self, arm_name: str):
@@ -292,10 +393,10 @@ class R1LiteRulePolicy:
 
         # Specify robot-specific parameters
         arm_entity_cfg = SceneEntityCfg(
-            "robot", joint_names=[f"{arm_name}_arm_joint.*"], body_names=[f"{arm_name}_arm_link6"]
+            "robot", joint_names=[f"{arm_name}_arm_joint.*"], body_names=[f"{arm_name}{self.EE_LINK_SUFFIX}"]
         )
         gripper_entity_cfg = SceneEntityCfg(
-            "robot", joint_names=[f"{arm_name}_gripper_finger_joint1"]
+            "robot", joint_names=[f"{arm_name}{self.GRIPPER_JOINT_SUFFIX}"]
         )
         arm_entity_cfg.resolve(self.scene)
         gripper_entity_cfg.resolve(self.scene)
@@ -312,6 +413,67 @@ class R1LiteRulePolicy:
 
         return controller, arm_entity_cfg, gripper_entity_cfg
         
+
+    def _held_object(self, gear_id: int):
+        """Scene object the policy is carrying for ``gear_id`` (1-4 sun gears, 5 ring, 6 reducer)."""
+        if gear_id == 5:
+            return self.ring_gear
+        if gear_id == 6:
+            return self.planetary_reducer
+        return getattr(self, f"sun_planetary_gear_{gear_id}")
+
+    def _mount_offset(self, arm_entity_cfg: SceneEntityCfg, gear_id: int, latch: bool) -> torch.Tensor:
+        """World-frame offset added to a pin/TCP target to get the EE target for a mount.
+
+        Nominal: ``_tcp_offset``. With ``MOUNT_USES_IN_HAND_OFFSET`` the (x, y) part is
+        replaced by the measured EE-minus-object offset. It is re-measured on every call
+        with ``latch=True`` (the swing, while the object hangs freely in the hand and may
+        still settle) and frozen afterwards (descent/contact); z keeps the nominal value.
+        """
+        off = self._tcp_offset(arm_entity_cfg).clone()
+        if not self.MOUNT_USES_IN_HAND_OFFSET:
+            return off
+        if latch or getattr(self, "_held_offset_xy", None) is None:
+            robot = self.scene["robot"]
+            ee_pos = robot.data.body_state_w[:, arm_entity_cfg.body_ids[0], 0:3]
+            obj_pos = self._held_object(gear_id).data.root_state_w[:, 0:3]
+            delta = ee_pos - obj_pos
+            # Only trust the measurement when the object really hangs in the hand:
+            # horizontally within 6 cm of the nominal TCP and lifted off the table.
+            # Otherwise (missed grasp, wrong object) keep the nominal offset so the
+            # arm does not chase an object lying elsewhere on the table.
+            nominal_xy = off[:, 0:2]
+            plausible = ((delta[:, 0:2] - nominal_xy).norm(dim=-1) < 0.06) & (obj_pos[:, 2] > self.table_height + 0.03)
+            self._held_offset_xy = torch.where(plausible.unsqueeze(-1), delta[:, 0:2], nominal_xy).clone()
+        off[:, 0:2] = self._held_offset_xy
+        return off
+
+    def _rotate_about_tcp_via_ik(self,
+                                 arm_entity_cfg: SceneEntityCfg,
+                                 gripper_entity_cfg: SceneEntityCfg,
+                                 ee_target_position: torch.Tensor,
+                                 ee_target_orientation: torch.Tensor,
+                                 angle_rad: float,
+                                 tcp_offset: torch.Tensor | None = None):
+        """IK step that spins the gripper by ``angle_rad`` about the vertical axis
+        through the TCP while keeping the TCP in place (used when ``ROTATE_VIA_IK``).
+
+        ``ee_target_position`` already includes the world-frame TCP offset, so the
+        EE orbits the TCP: the horizontal part of that offset is rotated by the
+        same yaw that is applied to the orientation.
+        """
+        n = ee_target_position.shape[0]
+        z_axis = torch.tensor([[0.0, 0.0, 1.0]], device=self.sim.device).expand(n, -1)
+        q_yaw = quat_from_angle_axis(torch.full((n,), float(angle_rad), device=self.sim.device), z_axis)
+        if tcp_offset is None:
+            tcp_offset = self._tcp_offset(arm_entity_cfg)
+        offset_xy = (tcp_offset * torch.tensor([[1.0, 1.0, 0.0]], device=self.sim.device)).expand(n, -1)
+        rotated_position = ee_target_position - offset_xy + quat_apply(q_yaw, offset_xy)
+        rotated_orientation = quat_mul(q_yaw, ee_target_orientation.expand(n, -1))
+        return self.move_robot_to_position(
+            arm_entity_cfg, gripper_entity_cfg, self.diff_ik_controller,
+            rotated_position, rotated_orientation, None,
+        )
 
     def move_robot_to_position(self,
                             arm_entity_cfg: SceneEntityCfg,
@@ -332,8 +494,7 @@ class R1LiteRulePolicy:
         # Pick the per-arm controller from our dict — `diff_ik_controller` arg
         # is kept only for backwards compat with existing call sites that pass
         # self.diff_ik_controller. The per-arm lookup is what actually runs.
-        # Joint id 9 is the first left-arm joint, 10 is the first right-arm.
-        arm_key = "left" if arm_entity_cfg.joint_ids[0] == 9 else "right"
+        arm_key = self._arm_key(arm_entity_cfg)
         controller = self.ik_controllers[arm_key]
 
         ee_pose_w = robot.data.body_state_w[:, arm_body_ids[0], 0:7]
@@ -367,6 +528,12 @@ class R1LiteRulePolicy:
             ee_pose_w[:, 3:7],
         )
         joint_pos_des = controller.compute(ee_pos_b, ee_quat_b, jacobian, joint_pos)
+        if self.IK_STEP_FRACTION != 1.0:
+            joint_pos_des = joint_pos + self.IK_STEP_FRACTION * (joint_pos_des - joint_pos)
+        if self.IK_MAX_JOINT_STEP is not None:
+            joint_pos_des = joint_pos + torch.clamp(
+                joint_pos_des - joint_pos, -self.IK_MAX_JOINT_STEP, self.IK_MAX_JOINT_STEP
+            )
 
         # IK diagnostic: throttle to every 10 sim steps (~0.10 s at sim_dt=0.01)
         # for finer resolution during mount phases.
@@ -381,11 +548,14 @@ class R1LiteRulePolicy:
             g1 = self.sun_planetary_gear_1.data.root_state_w[0, 0:3].cpu().tolist()
             pc = self.planetary_carrier.data.root_state_w[0, 0:3].cpu().tolist()
             grip_pos = robot.data.joint_pos[0, gripper_entity_cfg.joint_ids[0]].item()
-            arm_id = "L" if arm_entity_cfg.joint_ids[0] == 9 else "R"
+            arm_id = "L" if arm_key == "left" else "R"
+            rot_err_deg = math.degrees(
+                quat_error_magnitude(ee_pose_w[0:1, 3:7], target_orientation[0:1].expand(1, -1)).item()
+            )
             print(
                 f"[DLS step={self.count} arm={arm_id}] "
                 f"tgt=({tgt[0]:+.2f},{tgt[1]:+.2f},{tgt[2]:+.2f}) "
-                f"ee=({ee[0]:+.2f},{ee[1]:+.2f},{ee[2]:+.2f}) "
+                f"ee=({ee[0]:+.2f},{ee[1]:+.2f},{ee[2]:+.2f}) rot_err={rot_err_deg:.0f}deg "
                 f"g1=({g1[0]:+.3f},{g1[1]:+.3f},{g1[2]:+.3f}) "
                 f"pc=({pc[0]:+.3f},{pc[1]:+.3f},{pc[2]:+.3f}) "
                 f"grip={grip_pos:+.3f} err={err:.3f}m j=[{j_str}]"
@@ -587,12 +757,14 @@ class R1LiteRulePolicy:
 
         else:
             root_state = self.initial_root_state[f"sun_planetary_gear_{gear_id}"]
+            if self.PICK_USES_CURRENT_POSE:
+                root_state = self._held_object(gear_id).data.root_state_w.clone()
         # print(f"obj: {obj}")
         # target_position, target_orientation = target_frame.get_local_pose()
         # target_position, target_orientation = target_frame.get_world_poses()
         target_position = root_state[:, :3].clone()
         target_position[:, 2] = self.table_height + self.grasping_height + obj_height_offset
-        target_position = target_position + torch.tensor([self.TCP_offset_x, 0.0, self.TCP_offset_z], device=self.sim.device)
+        target_position = target_position + self._tcp_offset(arm_entity_cfg)
         # target_orientation = obj.data.default_root_state[:, 3:7].clone()
         # print(f"target_position: {target_position}, target_orientation: {target_orientation}")
         # Step 1.1: Move the arm to the target position above the gear and keep the orientation
@@ -600,11 +772,12 @@ class R1LiteRulePolicy:
         
         # target_orientation = torch.tensor([[0.0, -1.0, 0.0, 0.0]], device=sim.device)
         target_orientation = root_state[:, 3:7].clone()
-        # Rotate +90 deg around Y so link6 +X (R1_Lite gripper extension) points world -Z (down).
-        # R1's gripper extends along link6 +Z, so R1 uses [0, 1, 0, 0] (180-X) instead.
+        # Compose the object's yaw with GRIPPER_DOWN_QUAT so the gripper points world -Z (down).
+        # R1_Lite: +90 deg about Y (gripper along link6 +X). R1's gripper extends along
+        # link6 +Z, so the R1 policy uses [0, 1, 0, 0] (180-X) instead.
         target_orientation, target_position = torch_utils.tf_combine(
             target_orientation, target_position,
-            torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
+            self._gripper_down_quat(arm_entity_cfg), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
         )
 
         # print(f"target_position: {target_position}, target_orientation: {target_orientation}")
@@ -646,7 +819,9 @@ class R1LiteRulePolicy:
             # self.scene["robot"].set_joint_position_target(
             #         gripper_joint_pos_des, joint_ids=gripper_joint_ids
             #     )
-            action = torch.tensor([[0.0]], device=self.sim.device)
+            # Explicit (1, n_fingers) so it can be concatenated with other actions
+            # (R1Pro drives two finger joints; a (1, 1) tensor only broadcasts on its own).
+            action = torch.zeros((1, len(gripper_joint_ids)), device=self.sim.device)
             joint_ids = gripper_joint_ids
 
 
@@ -680,7 +855,7 @@ class R1LiteRulePolicy:
 
         if gear_id == 4:
             root_state = self.planetary_carrier.data.root_state_w.clone()
-            if self.count == count_step[0]:
+            if self._phase_started(count_step[0]):
                 self.current_target_position = root_state[:, :3].clone()
             # planetary_carrier_quat = root_state[:, 3:7].clone()
             obj_height_offset = 0.01
@@ -688,7 +863,7 @@ class R1LiteRulePolicy:
 
         elif gear_id == 6: # Reducer
             root_state = self.sun_planetary_gear_4.data.root_state_w.clone()
-            if self.count == count_step[0]:
+            if self._phase_started(count_step[0]):
                 self.current_target_position = root_state[:, :3].clone()
                 self.current_target_orientation = root_state[:, 3:7].clone()
             obj_height_offset = 0.023 + 0.02
@@ -715,7 +890,7 @@ class R1LiteRulePolicy:
             #     original_planetary_carrier_quat, original_planetary_carrier_pos, 
             #     torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=self.sim.device), pin_local_pos.unsqueeze(0)
             # )
-            if self.count == count_step[0]:
+            if self._phase_started(count_step[0]):
                 self.current_target_position = pin_world_pos.clone()
             # target_orientation = planetary_carrier_quat.clone()
         
@@ -729,21 +904,19 @@ class R1LiteRulePolicy:
         target_position[:, 2] = self.table_height + self.grasping_height
         target_position[:, 2] += obj_height_offset
 
-        target_position += torch.tensor([self.TCP_offset_x, 0.0, self.TCP_offset_z], device=self.sim.device)
+        target_position += self._mount_offset(arm_entity_cfg, gear_id, latch=bool(self.count < count_step[1]))
         
         target_position_h = target_position + torch.tensor([0.0, 0.0, self.lifting_height], device=self.sim.device)
 
-        # R1_Lite gripper extends along link6 +X, so "gripper down" needs link6 +X
-        # rotated to world -Z, i.e. +90 deg around Y. (R1's gripper extends along
-        # link6 +Z and used [0, -1, 0, 0] = 180-X for the same effect.)
-        target_orientation = torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=self.sim.device)
+        # "Gripper down" orientation for this robot (see GRIPPER_DOWN_QUAT).
+        target_orientation = self._gripper_down_quat(arm_entity_cfg)
 
         if gear_id == 6:
             # For the reducer, also align with the captured gear orientation so
-            # roll/pitch matches the picked pose, then add the same +90-Y for "down".
+            # roll/pitch matches the picked pose, then add the same "down" rotation.
             target_orientation, target_position = torch_utils.tf_combine(
                 self.current_target_orientation, target_position,
-                torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=self.sim.device), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
+                self._gripper_down_quat(arm_entity_cfg), torch.tensor([[0.0, 0.0, 0.0]], device=self.sim.device)
             )
 
         target_position_h_down = target_position + torch.tensor([0.0, 0.0, mount_height_offset], device=self.sim.device)
@@ -757,7 +930,7 @@ class R1LiteRulePolicy:
             # swing, leaving a permanent ~5cm Y offset.
             phase_start = int(count_step[0].item())
             phase_end = int(count_step[1].item())
-            if self.count == phase_start:
+            if self._phase_started(phase_start):
                 ee_pose_w = self.scene["robot"].data.body_state_w[
                     :, arm_entity_cfg.body_ids[0], 0:7
                 ]
@@ -793,7 +966,7 @@ class R1LiteRulePolicy:
             num_gripper_joints = len(gripper_joint_ids)
 
             gripper_joint_pos_des = torch.full(
-                    (num_gripper_joints,), 0.04, device=self.device
+                    (num_gripper_joints,), self.GRIPPER_OPEN_POS, device=self.device
                 )
 
             # if gear_id == 5:
@@ -824,7 +997,7 @@ class R1LiteRulePolicy:
                                     gripper_entity_cfg: SceneEntityCfg):
 
         root_state = self.planetary_carrier.data.root_state_w.clone()
-        if self.count == count_step[0]:
+        if self._phase_started(count_step[0]):
             self.current_target_position = root_state[:, :3].clone()
         # planetary_carrier_quat = root_state[:, 3:7].clone()
         obj_height_offset = 0.01
@@ -837,7 +1010,7 @@ class R1LiteRulePolicy:
 
             local_pos = torch.tensor([0.0, 0.0, 0.0], device=self.sim.device).unsqueeze(0)
 
-            if self.count == count_step[0]:
+            if self._phase_started(count_step[0]):
                 self.current_target_orientation, self.current_target_position = torch_utils.tf_combine(
                     planetary_carrier_quat, planetary_carrier_pos, 
                     torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=self.sim.device), local_pos
@@ -851,11 +1024,11 @@ class R1LiteRulePolicy:
         target_position[:, 2] = self.table_height + self.grasping_height
         target_position[:, 2] += obj_height_offset
 
-        target_position += torch.tensor([self.TCP_offset_x, 0.0, self.TCP_offset_z], device=self.sim.device)
+        target_position += self._mount_offset(arm_entity_cfg, gear_id, latch=bool(self.count < count_step[1]))
         
         target_position_h = target_position + torch.tensor([0.0, 0.0, self.lifting_height], device=self.sim.device)
-        # R1_Lite gripper extends along link6 +X; +90 deg around Y aligns it with world -Z (down).
-        target_orientation = torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=self.sim.device)
+        # "Gripper down" orientation for this robot (see GRIPPER_DOWN_QUAT).
+        target_orientation = self._gripper_down_quat(arm_entity_cfg)
 
         target_position_h_down = target_position + torch.tensor([0.0, 0.0, mount_height_offset], device=self.sim.device)
 
@@ -863,7 +1036,7 @@ class R1LiteRulePolicy:
             # Slow swing via target interpolation with hold-at-end; see mount_gear_to_target.
             phase_start = int(count_step[0].item())
             phase_end = int(count_step[1].item())
-            if self.count == phase_start:
+            if self._phase_started(phase_start):
                 ee_pose_w = self.scene["robot"].data.body_state_w[
                     :, arm_entity_cfg.body_ids[0], 0:7
                 ]
@@ -898,18 +1071,28 @@ class R1LiteRulePolicy:
             rot_deg = 30
 
         if self.count >= count_step[2] and self.count < count_step[3]:
-            # joint_pos = joint_pos[:, arm_joint_ids]
-            joint_ids = arm_entity_cfg.joint_ids
-
             delta_rot_rad = rot_deg / (count_step[3] - count_step[2]) * torch.pi / 180.0
-            if self.count == count_step[2]:
-                joint_pos = self.scene["robot"].data.joint_pos.clone()
-                self.step_initial_joint_pos = joint_pos[:, joint_ids].clone()
-            
-            self.current_target_joint_pos = self.step_initial_joint_pos.clone()
-            self.current_target_joint_pos[:, 5] += delta_rot_rad * (self.count - count_step[2] + 5)
-            
-            action = self.current_target_joint_pos
+            angle = delta_rot_rad * (self.count - count_step[2] + 5)
+
+            if self.ROTATE_VIA_IK:
+                # 7-DOF wrists (R1Pro): no single joint is aligned with the gripper
+                # axis, so spin the IK target about the vertical TCP axis instead.
+                action, joint_ids = self._rotate_about_tcp_via_ik(
+                    arm_entity_cfg, gripper_entity_cfg, target_position_h_down, target_orientation, angle,
+                    tcp_offset=self._mount_offset(arm_entity_cfg, gear_id, latch=False),
+                )
+            else:
+                # joint_pos = joint_pos[:, arm_joint_ids]
+                joint_ids = arm_entity_cfg.joint_ids
+
+                if self._phase_started(count_step[2]):
+                    joint_pos = self.scene["robot"].data.joint_pos.clone()
+                    self.step_initial_joint_pos = joint_pos[:, joint_ids].clone()
+
+                self.current_target_joint_pos = self.step_initial_joint_pos.clone()
+                self.current_target_joint_pos[:, self.GRIPPER_ROLL_JOINT_INDEX] += angle
+
+                action = self.current_target_joint_pos
 
         if self.count >= count_step[3] and self.count < count_step[4]:
             gripper_joint_ids = gripper_entity_cfg.joint_ids
@@ -917,7 +1100,7 @@ class R1LiteRulePolicy:
             num_gripper_joints = len(gripper_joint_ids)
 
             gripper_joint_pos_des = torch.full(
-                    (num_gripper_joints,), 0.04, device=self.device
+                    (num_gripper_joints,), self.GRIPPER_OPEN_POS, device=self.device
                 )
 
             action = gripper_joint_pos_des.unsqueeze(0)
@@ -935,6 +1118,10 @@ class R1LiteRulePolicy:
     def get_action(self):
         action = None
         joint_ids = None
+        # Count at the previous call, for _phase_started (phase boundaries are detected
+        # as "crossed since the last call", not by equality).
+        self._phase_prev_count = getattr(self, "_phase_last_count", -1)
+        self._phase_last_count = self.count
 
         if self.TCP_offset_x is None:
             self._compute_tcp_offset()

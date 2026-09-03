@@ -558,6 +558,11 @@ class GalaxeaLabAgentEnv(DirectRLEnv):
         self.robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         # self.robot.write_joint_state_to_sim(joint_pos, None, self._joint_idx, env_ids)
         self.robot.write_joint_position_to_sim(joint_pos, self._joint_idx, env_ids)
+        # Seed every joint's position target from the default pose first: IsaacLab
+        # zero-initialises joint_pos_target, so joints outside _joint_idx (e.g. the
+        # second, directly driven finger of R1Pro's gripper) would otherwise be
+        # driven to 0 from the first frame.
+        self.robot.set_joint_position_target(self.robot.data.default_joint_pos[env_ids], env_ids=env_ids)
         self.robot.set_joint_position_target(joint_pos, self._joint_idx, env_ids)
 
         # Write the default torso joint position to simulation
@@ -680,12 +685,15 @@ class GalaxeaLabAgentEnv(DirectRLEnv):
         elif self.env_step_joint_ids == self._right_arm_joint_idx:
             self._right_arm_action = self.env_step_action.clone()
         elif self.env_step_joint_ids == self._left_arm_joint_idx + self._right_arm_joint_idx:
-            self._left_arm_action = self.env_step_action.clone()[:, :6]
-            self._right_arm_action = self.env_step_action.clone()[:, 6:12]
-        elif self.env_step_joint_ids == self._left_gripper_dof_idx:
-            self._left_gripper_action = self.env_step_action[0].clone()
-        elif self.env_step_joint_ids == self._right_gripper_dof_idx:
-            self._right_gripper_action = self.env_step_action[0].clone()
+            # per-arm joint count comes from the bundle (6 for R1/R1_Lite, 7 for R1Pro)
+            n_arm = len(self._left_arm_joint_idx)
+            self._left_arm_action = self.env_step_action.clone()[:, :n_arm]
+            self._right_arm_action = self.env_step_action.clone()[:, n_arm:2 * n_arm]
+        elif self.env_step_joint_ids is not None and list(self.env_step_joint_ids[:1]) == list(self._left_gripper_dof_idx[:1]):
+            # gripper actions may cover one or two finger joints; record the first (driven) one
+            self._left_gripper_action = self.env_step_action[0][:1].clone()
+        elif self.env_step_joint_ids is not None and list(self.env_step_joint_ids[:1]) == list(self._right_gripper_dof_idx[:1]):
+            self._right_gripper_action = self.env_step_action[0][:1].clone()
         self.act = dict(left_arm_action=self._left_arm_action, right_arm_action=self._right_arm_action,
             left_gripper_action=self._left_gripper_action, right_gripper_action=self._right_gripper_action)
 
