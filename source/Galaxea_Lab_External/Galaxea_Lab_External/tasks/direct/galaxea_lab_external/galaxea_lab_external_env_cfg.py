@@ -40,6 +40,10 @@ class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
     # Record data
     record_data = True
     record_freq = 5
+    # By default only complete (five-point) assemblies are written.  The
+    # rule-based generator can set this to an integer threshold with
+    # --keep_failed MIN_SCORE; None means discard every failed episode.
+    keep_failed = None
 
     # env
     sim_dt = 0.01

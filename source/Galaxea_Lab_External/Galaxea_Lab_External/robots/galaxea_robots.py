@@ -376,7 +376,10 @@ GALAXEA_R1_LITE_HEAD_CAMERA_CFG = CameraCfg(
     offset=CameraCfg.OffsetCfg(
         pos=(0.0, 0.0, 0.0),
         rot=(1.0, 0.0, 0.0, 0.0),
-        convention="opengl",
+        # R1_Lite's vendor URDF camera_head_*_link is a ROS optical frame:
+        # +Z points out of the camera and +Y points down.  The identity offset
+        # therefore needs ROS conversion when Isaac Lab spawns its USD camera.
+        convention="ros",
     ),
 )
 
@@ -395,7 +398,9 @@ GALAXEA_R1_LITE_HAND_CAMERA_CFG = CameraCfg(
     offset=CameraCfg.OffsetCfg(
         pos=(0.0, 0.0, 0.0),
         rot=(1.0, 0.0, 0.0, 0.0),
-        convention="opengl",
+        # The D405 links in the vendor URDF are also ROS optical frames.  With
+        # OpenGL here the camera looks along -Z, back into the gripper/body.
+        convention="ros",
     ),
 )
 
@@ -533,8 +538,9 @@ GALAXEA_R1_PRO_CFG = ArticulationCfg(
 # The vendor camera links are ROS optical frames (+Z = optical axis, +X = image
 # right, +Y = image down): camera_head_*_link rpy=(-1.92, 0, -1.57) relative to
 # head_link and *_d405_link rpy=(2.44, 0, -1.57) relative to the gripper link.
-# Hence convention="ros" with an identity offset (an "opengl" offset would look
-# along -Z, i.e. away from the scene).
+# R1Pro's wrist sensor is D405 only; the vendor GMSL/fisheye mesh links are
+# intentionally omitted from the URDF/USD. Hence convention="ros" with an
+# identity offset (an "opengl" offset would look along -Z, away from the scene).
 GALAXEA_R1_PRO_HEAD_CAMERA_CFG = CameraCfg(
     prim_path="/World/envs/env_.*/Robot/camera_head_left_link/head_cam",
     update_period=0.0,

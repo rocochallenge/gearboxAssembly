@@ -23,6 +23,7 @@ from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
+from Galaxea_Lab_External.robots.gearbox_geometry import PLANETARY_PIN_LOCAL_POSITIONS
 from isaaclab.utils import configclass
 from isaaclab.controllers import (
     DifferentialIKController,
@@ -118,10 +119,11 @@ class R1LiteRulePolicy:
         self.planetary_reducer = obj_dict["planetary_reducer"]
 
         # Define pin positions in local coordinates (relative to planetary carrier)
+        # These are carrier-local geometry anchors.  World pin positions are
+        # recomputed from the live carrier pose whenever they are needed.
         self.pin_local_positions = [
-            torch.tensor([0.0, -0.054, 0.0], device=self.device),      # pin_0
-            torch.tensor([0.0465, 0.0268, 0.0], device=self.device),   # pin_1
-            torch.tensor([-0.0465, 0.0268, 0.0], device=self.device),  # pin_2
+            torch.tensor(pos, dtype=torch.float32, device=self.device)
+            for pos in PLANETARY_PIN_LOCAL_POSITIONS
         ]
 
         # TCP offset (link6 -> gripper fingertip midpoint, in link6 local frame)
@@ -600,8 +602,10 @@ class R1LiteRulePolicy:
                         'sun_planetary_gear_3', 'sun_planetary_gear_4',
                         'ring_gear', 'planetary_reducer']
 
-        # Get the planetary carrier positions and orientations
-        root_state = self.initial_root_state["planetary_carrier"]
+        # Get the planetary carrier positions and orientations from the live
+        # simulation state.  The carrier can be nudged/rotated by earlier
+        # contacts, so reset-time root_state is not a valid pin reference.
+        root_state = self.planetary_carrier.data.root_state_w
         planetary_carrier_pos = root_state[:, :3].clone()
         planetary_carrier_quat = root_state[:, 3:7].clone()
         num_envs = planetary_carrier_pos.shape[0]
@@ -875,8 +879,6 @@ class R1LiteRulePolicy:
 
             planetary_carrier_pos = self.planetary_carrier.data.root_state_w[:, :3].clone()
             planetary_carrier_quat = self.planetary_carrier.data.root_state_w[:, 3:7].clone()
-            # original_planetary_carrier_pos = self.initial_root_state["planetary_carrier"][:, :3].clone()
-            # original_planetary_carrier_quat = self.initial_root_state["planetary_carrier"][:, 3:7].clone()
 
             # Local pose of the pin
             pin_local_pos = self.gear_to_pin_map[f"sun_planetary_gear_{gear_id}"]['pin_local_pos'].clone()

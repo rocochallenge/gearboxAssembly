@@ -1440,59 +1440,6 @@
       xyz="0 0 0" />
   </joint>
   <link
-    name="left_gmsl_link">
-    <inertial>
-      <origin
-        xyz="-3.53876339770354E-06 0.00952645301735067 -0.0193719007025304"
-        rpy="0 0 0" />
-      <mass
-        value="0.0230739846089694" />
-      <inertia
-        ixx="4.92288959423237E-06"
-        ixy="1.6786116612382E-08"
-        ixz="1.64117264604509E-10"
-        iyy="4.3213638594574E-06"
-        iyz="1.02602423053323E-06"
-        izz="4.37204196127736E-06" />
-    </inertial>
-    <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://r1pro_urdf/meshes/left_gmsl_link.STL" />
-      </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.611764705882353 0.658823529411765 0.670588235294118 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://r1pro_urdf/meshes/left_gmsl_link.STL" />
-      </geometry>
-    </collision>
-  </link>
-  <joint
-    name="left_gmsl_joint"
-    type="fixed">
-    <origin
-      xyz="0.06129 0 0.0082885"
-      rpy="-3.1416 0 -1.5708" />
-    <parent
-      link="left_gripper_link" />
-    <child
-      link="left_gmsl_link" />
-    <axis
-      xyz="0 0 0" />
-  </joint>
-  <link
     name="left_gripper_finger_link1">
     <inertial>
       <origin
@@ -2174,59 +2121,6 @@
       link="right_arm_link7" />
     <child
       link="right_gripper_link" />
-    <axis
-      xyz="0 0 0" />
-  </joint>
-  <link
-    name="right_gmsl_link">
-    <inertial>
-      <origin
-        xyz="-3.53876339770354E-06 0.00952645301735067 -0.0193719007025304"
-        rpy="0 0 0" />
-      <mass
-        value="0.0230739846089694" />
-      <inertia
-        ixx="4.92288959423237E-06"
-        ixy="1.6786116612382E-08"
-        ixz="1.64117264604509E-10"
-        iyy="4.3213638594574E-06"
-        iyz="1.02602423053323E-06"
-        izz="4.37204196127736E-06" />
-    </inertial>
-    <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://r1pro_urdf/meshes/left_gmsl_link.STL" />
-      </geometry>
-      <material
-        name="">
-        <color
-          rgba="0.611764705882353 0.658823529411765 0.670588235294118 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://r1pro_urdf/meshes/left_gmsl_link.STL" />
-      </geometry>
-    </collision>
-  </link>
-  <joint
-    name="right_gmsl_joint"
-    type="fixed">
-    <origin
-      xyz="0.06129 0 0.0082885"
-      rpy="-3.1416 0 -1.5708" />
-    <parent
-      link="right_gripper_link" />
-    <child
-      link="right_gmsl_link" />
     <axis
       xyz="0 0 0" />
   </joint>

@@ -10,6 +10,7 @@ import torch
 import numpy as np
 import time
 from datetime import datetime
+from itertools import permutations
 # from torchvision.utils import save_image
 from PIL import Image
 
@@ -19,9 +20,10 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, AssetBase, RigidObject
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.utils.math import sample_uniform, euler_xyz_from_quat
+from isaaclab.utils.math import sample_uniform, euler_xyz_from_quat, quat_apply
 
 from .galaxea_lab_external_env_cfg import GalaxeaLabExternalEnvCfg
+from Galaxea_Lab_External.robots.gearbox_geometry import PLANETARY_PIN_LOCAL_POSITIONS
 
 from pxr import Usd, Sdf, UsdPhysics, UsdGeom, Gf
 from isaaclab.sim.spawners.materials import physics_materials, physics_materials_cfg
@@ -39,6 +41,18 @@ import h5py
 
 class GalaxeaLabExternalEnv(DirectRLEnv):
     cfg: GalaxeaLabExternalEnvCfg
+
+    # Assembly success criteria.  The first three sun gears are the three
+    # planetary gears mounted on the carrier pins; sun_planetary_gear_4 is the
+    # centre/sun gear and is deliberately not matched to a pin.
+    SUCCESS_SCORE = 5
+    ASSEMBLY_ANGLE_TOLERANCE = 0.05  # radians
+    PLANETARY_GEAR_XY_TOLERANCE = 0.002  # metres
+    PLANETARY_GEAR_Z_TOLERANCE = 0.012  # metres (allows the gear thickness)
+    CENTRE_GEAR_XY_TOLERANCE = 0.005  # metres
+    CENTRE_GEAR_Z_TOLERANCE = 0.005  # metres
+    RING_GEAR_XY_TOLERANCE = 0.005  # metres
+    RING_GEAR_Z_TOLERANCE = 0.010  # metres (carrier/ring mesh height)
 
     def __init__(self, cfg: GalaxeaLabExternalEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
@@ -138,12 +152,12 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.planetary_carrier = RigidObject(self.cfg.planetary_carrier_cfg)
         self.planetary_reducer = RigidObject(self.cfg.planetary_reducer_cfg)
 
+        # The USD has no separate pin rigid bodies.  Keep only carrier-local
+        # geometry here; get_key_points() transforms it with the live carrier
+        # pose on every score evaluation.
         self.pin_local_positions = [
-            torch.tensor([0.0, -0.054, 0.0], device=self.device),      # pin_0
-            # torch.tensor([0.0465, 0.0268, 0.0], device=self.device),   # pin_1
-            # torch.tensor([-0.0465, 0.0268, 0.0], device=self.device),  # pin_2
-            torch.tensor([0.0471, 0.0268, 0.0], device=self.device),   # pin_1
-            torch.tensor([-0.0471, 0.0268, 0.0], device=self.device),  # pin_2
+            torch.tensor(pos, dtype=torch.float32, device=self.device)
+            for pos in PLANETARY_PIN_LOCAL_POSITIONS
         ]
 
 
@@ -286,8 +300,9 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
 
     def get_key_points(self):
-        # Pin positions
-        # Calculate world positions of all pins
+        # Calculate world positions of all pins from the *current* carrier
+        # state.  This follows any carrier translation/rotation during an
+        # episode instead of comparing against reset-time world coordinates.
         planetary_carrier_pos = self.planetary_carrier.data.root_state_w[:, :3].clone()
         planetary_carrier_quat = self.planetary_carrier.data.root_state_w[:, 3:7].clone()
 
@@ -326,73 +341,121 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         return pin_world_positions, pin_world_quats, gear_world_positions, gear_world_quats, planetary_carrier_pos, planetary_carrier_quat, ring_gear_world_pos, ring_gear_world_quat, reducer_world_pos, reducer_world_quat
 
+    def _pose_matches(
+        self,
+        source_pos: torch.Tensor,
+        source_quat: torch.Tensor,
+        target_pos: torch.Tensor,
+        xy_tolerance: float,
+        z_tolerance: float,
+    ) -> torch.Tensor:
+        """Return one assembly-match boolean per environment.
+
+        Position is checked in XY plus an independent Z tolerance because the
+        gear root is above/below the carrier reference by its physical
+        thickness.  Orientation is intentionally *not* compared as a full
+        quaternion: arbitrary yaw about world Z is valid.  Instead, only the
+        angle between the object's local +Z axis and world +Z is checked.
+        """
+        xy_error = torch.linalg.vector_norm(source_pos[:, :2] - target_pos[:, :2], dim=-1)
+        z_error = torch.abs(source_pos[:, 2] - target_pos[:, 2])
+
+        local_z = torch.zeros_like(source_pos)
+        local_z[:, 2] = 1.0
+        world_z = quat_apply(source_quat, local_z)
+        world_z = world_z / torch.linalg.vector_norm(world_z, dim=-1, keepdim=True).clamp_min(1e-8)
+        z_axis_angle = torch.acos(world_z[:, 2].clamp(-1.0, 1.0))
+
+        return (
+            (xy_error < xy_tolerance)
+            & (z_error < z_tolerance)
+            & (z_axis_angle < self.ASSEMBLY_ANGLE_TOLERANCE)
+        )
+
     def evaluate_score(self):
-        pin_world_positions, pin_world_quats, gear_world_positions, gear_world_quats, planetary_carrier_pos, planetary_carrier_quat, ring_gear_world_pos, ring_gear_world_quat, reducer_world_pos, reducer_world_quat = self.get_key_points()
-        score = 0
+        """Evaluate the five-point assembly score, one score per environment.
 
-        for gear_idx in range(len(gear_world_positions)):
-            gear_world_pos = gear_world_positions[gear_idx]
-            gear_world_quat = gear_world_quats[gear_idx]
+        Points:
+          1 each. The first three planetary gears each occupy a distinct
+                 carrier pin (any one-to-one assignment is accepted).
+          4. The fourth/sun gear is at the current carrier centre (the centre
+             pin is intentionally not evaluated).
+          5. The ring gear is aligned with the planetary carrier.
+        """
+        (
+            pin_world_positions,
+            _,
+            gear_world_positions,
+            gear_world_quats,
+            planetary_carrier_pos,
+            planetary_carrier_quat,
+            ring_gear_world_pos,
+            ring_gear_world_quat,
+            _,
+            _,
+        ) = self.get_key_points()
 
-            # print(f"gear_world_pos: {gear_world_pos}, gear_world_quat: {gear_world_quat}")
-            # Search how many gears are mounted to the planetary carrier
-            num_mounted_gears = 0
-            for pin_idx in range(len(pin_world_positions)):
-                pin_world_pos = pin_world_positions[pin_idx]
-                pin_world_quat = pin_world_quats[pin_idx]
-                # print(f"pin_world_pos: {pin_world_pos}")
-                # print(f"pin_world_quat: {pin_world_quat}")
-                distance = torch.norm(gear_world_pos[:, :2] - pin_world_pos[:, :2])
-                height_diff = gear_world_pos[:, 2] - pin_world_pos[:, 2]
-                # Evaluate the angle between gear_world_quat and pin_world_quat
-                angle = torch.acos(torch.dot(gear_world_quat.squeeze(0), pin_world_quat.squeeze(0)))
-                # print(f"distance: {distance}")
-                # print(f"angle: {angle}")
-                if distance < 0.002 and angle < 0.1 and height_diff < 0.012:
-                    num_mounted_gears += 1
-            score += num_mounted_gears
+        num_envs = planetary_carrier_pos.shape[0]
+        score = torch.zeros(num_envs, dtype=torch.int32, device=self.device)
 
-        # Check whether the planetary carrier is mounted to the ring gear
-        distance = torch.norm(planetary_carrier_pos[:, :2] - ring_gear_world_pos[:, :2])
-        height_diff = planetary_carrier_pos[:, 2] - ring_gear_world_pos[:, 2]
-        angle = torch.acos(torch.dot(planetary_carrier_quat.squeeze(0), ring_gear_world_quat.squeeze(0)))
-        if distance < 0.005 and angle < 0.1 and height_diff < 0.004:
-            score += 1
+        # Three outer planetary gears are scored independently.  We still use
+        # a one-to-one pin assignment so two gears cannot claim the same pin;
+        # taking the best assignment makes the result independent of pickup
+        # ordering while preserving partial scores (0, 1, 2, or 3).
+        planetary_score = torch.zeros(num_envs, dtype=torch.int32, device=self.device)
+        for pin_assignment in permutations(range(len(pin_world_positions)), 3):
+            assignment_score = torch.zeros(num_envs, dtype=torch.int32, device=self.device)
+            for gear_idx, pin_idx in enumerate(pin_assignment):
+                assignment_score += self._pose_matches(
+                    gear_world_positions[gear_idx],
+                    gear_world_quats[gear_idx],
+                    pin_world_positions[pin_idx],
+                    self.PLANETARY_GEAR_XY_TOLERANCE,
+                    self.PLANETARY_GEAR_Z_TOLERANCE,
+                ).to(torch.int32)
+            planetary_score = torch.maximum(planetary_score, assignment_score)
+        score += planetary_score
 
-        # Check whehter the gear is mount in the middle
-        for gear_idx in range(len(gear_world_positions)):
-            gear_world_pos = gear_world_positions[gear_idx]
-            gear_world_quat = gear_world_quats[gear_idx]
-            distance = torch.norm(gear_world_pos[:, :2] - ring_gear_world_pos[:, :2])
-            height_diff = gear_world_pos[:, 2] - ring_gear_world_pos[:, 2]
-            angle = torch.acos(torch.dot(gear_world_quat.squeeze(0), ring_gear_world_quat.squeeze(0)))
-            if distance < 0.005 and angle < 0.1 and height_diff < 0.004:
-                score += 1
+        # The fourth gear is the centre/sun gear.  Its centre is the current
+        # carrier origin; the centre pin itself is deliberately not scored.
+        centre_match = self._pose_matches(
+            gear_world_positions[3],
+            gear_world_quats[3],
+            planetary_carrier_pos,
+            self.CENTRE_GEAR_XY_TOLERANCE,
+            self.CENTRE_GEAR_Z_TOLERANCE,
+        )
+        score += centre_match.to(torch.int32)
 
-        # Check whether the reducer is mounted to the gear
-        for gear_idx in range(len(gear_world_positions)):
-            gear_world_pos = gear_world_positions[gear_idx]
-            gear_world_quat = gear_world_quats[gear_idx]
-            distance = torch.norm(gear_world_pos[:, :2] - reducer_world_pos[:, :2])
-            height_diff = gear_world_pos[:, 2] - reducer_world_pos[:, 2]
-            angle = torch.acos(torch.dot(gear_world_quat.squeeze(0), reducer_world_quat.squeeze(0)))
-            if distance < 0.005 and angle < 0.1 and height_diff < 0.002:
-                score += 1
+        # The outer shell/ring gear must be aligned with the planetary carrier.
+        ring_match = self._pose_matches(
+            ring_gear_world_pos,
+            ring_gear_world_quat,
+            planetary_carrier_pos,
+            self.RING_GEAR_XY_TOLERANCE,
+            self.RING_GEAR_Z_TOLERANCE,
+        )
+        score += ring_match.to(torch.int32)
 
         time_cost = self.rule_policy.count * self.sim.get_physics_dt()
-
         return score, time_cost
 
     def _get_rewards(self) -> torch.Tensor:
         print(f"Get rewards at {self.rule_policy.count * self.sim.get_physics_dt()} seconds")
-        self.score, time_cost = self.evaluate_score()
+        self.score_tensor, time_cost = self.evaluate_score()
+        # Keep the scalar form used by the single-environment HDF5 writer,
+        # while returning a proper vector reward to Isaac Lab.
+        self.score = int(self.score_tensor[0].item()) if self.score_tensor.numel() == 1 else self.score_tensor
         print(f"score: {self.score}")
 
-        return self.score
+        return self.score_tensor.to(dtype=torch.float32)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         print(f"--------------------------------Get dones at {self.rule_policy.count * self.sim.get_physics_dt()} seconds--------------------------------")
-        finish_task = torch.tensor(self.evaluate_score() == 6, device=self.device) or self.rule_policy.count >= self.rule_policy.total_time_steps
+        self.score_tensor, _ = self.evaluate_score()
+        finish_task = self.score_tensor == self.SUCCESS_SCORE
+        if self.rule_policy.count >= self.rule_policy.total_time_steps:
+            finish_task = torch.ones_like(finish_task, dtype=torch.bool)
         time_out = self.episode_length_buf >= self.max_episode_length - 1
 
         return finish_task, time_out
@@ -599,6 +662,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.obs = dict()
 
         self.score = 0
+        self.score_tensor = torch.zeros(self.scene.num_envs, dtype=torch.int32, device=self.device)
 
 
         # Reset Table
@@ -625,11 +689,13 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.table.write_root_state_to_sim(root_state)
 
        
-        self.save_hdf5_file_name = '../data/data_' + datetime.now().strftime("%Y%m%d_%H%M%S") + '.hdf5'
-
-        # If the folder is not exist, create it
-        if not os.path.exists('../data'):
-            os.makedirs('../data')
+        # Keep the historical ../data default, but allow generation scripts to
+        # isolate a dataset (for example ROCO_DATA_DIR=.../data/r1pro).
+        data_dir = os.path.abspath(os.environ.get("ROCO_DATA_DIR", "../data"))
+        os.makedirs(data_dir, exist_ok=True)
+        self.save_hdf5_file_name = os.path.join(
+            data_dir, "data_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".hdf5"
+        )
 
 
         self.initial_root_state = self._randomize_object_positions([self.planetary_carrier, self.ring_gear, 
@@ -870,39 +936,17 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         # -- reset envs that terminated/timed-out and log the episode information
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
-            print(f"Writing data to hdf5 file")
-            with h5py.File(self.save_hdf5_file_name, 'w') as f:
-                f.attrs['sim'] = True
-                obs = f.create_group('observations')
-                act = f.create_group('actions')
-                num_items = len(self.data_dict['/observations/head_rgb'])
-                obs.create_dataset('head_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-                obs.create_dataset('left_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-                obs.create_dataset('right_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-                obs.create_dataset('head_depth', shape=(num_items, 240, 320), dtype='float32')
-                obs.create_dataset('left_hand_depth', shape=(num_items, 240, 320), dtype='float32')
-                obs.create_dataset('right_hand_depth', shape=(num_items, 240, 320), dtype='float32')
-                # per-arm joint count comes from the active robot bundle (6 for R1/R1_Lite, 7 for R1Pro)
-                obs.create_dataset('left_arm_joint_pos', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-                obs.create_dataset('right_arm_joint_pos', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-                obs.create_dataset('left_gripper_joint_pos', shape=(num_items, ), dtype='float32')
-                obs.create_dataset('right_gripper_joint_pos', shape=(num_items, ), dtype='float32')
-                obs.create_dataset('left_arm_joint_vel', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-                obs.create_dataset('right_arm_joint_vel', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-                obs.create_dataset('left_gripper_joint_vel', shape=(num_items, ), dtype='float32')
-                obs.create_dataset('right_gripper_joint_vel', shape=(num_items, ), dtype='float32')
-                act.create_dataset('left_arm_action', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-                act.create_dataset('right_arm_action', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-                act.create_dataset('left_gripper_action', shape=(num_items, ), dtype='float32')
-                act.create_dataset('right_gripper_action', shape=(num_items, ), dtype='float32')
-                
-                f.create_dataset('score', shape=(num_items,), dtype='int32')
-                f.create_dataset('current_time', shape=(num_items,), dtype='float32')
-                # f.create_dataset('time_cost', data=self.time_cost)
-
-                for name, value in self.data_dict.items():
-                    # print(f"Writing {name} to hdf5 file with value: {value}")
-                    f[name][...] = value
+            # A reset may be caused by success, the policy time budget, or the
+            # episode timeout. Failed episodes are kept only when explicitly
+            # requested through --keep_failed MIN_SCORE.
+            episode_score = int(self.score_tensor[reset_env_ids].max().item())
+            episode_success = bool(torch.all(self.score_tensor[reset_env_ids] == self.SUCCESS_SCORE).item())
+            if episode_success:
+                self._write_hdf5_episode(success=True)
+            elif self.cfg.keep_failed is not None and episode_score >= self.cfg.keep_failed:
+                self._write_hdf5_episode(success=False)
+            else:
+                print(f"Skipping unsuccessful episode (score={episode_score})")
 
             self.data_dict = {
                 '/observations/head_rgb': [],
@@ -983,6 +1027,56 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         # return observations, rewards, resets and extras
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
+
+
+    def _write_hdf5_episode(self, success: bool):
+        """Write a completed episode and mark its outcome in the HDF5 attrs."""
+        status = "successful" if success else "failed"
+        score_value = int(self.score_tensor.max().item())
+        output_file = self.save_hdf5_file_name
+        if not success:
+            data_dir, data_name = os.path.split(output_file)
+            fail_dir = os.path.join(data_dir, "fail")
+            os.makedirs(fail_dir, exist_ok=True)
+            # Keep the historical fail_ prefix and make the retained score
+            # visible without opening the HDF5 file.
+            output_file = os.path.join(fail_dir, f"fail_score{score_value}_{data_name}")
+
+        with h5py.File(output_file, 'w') as f:
+            f.attrs['sim'] = True
+            f.attrs['success'] = bool(success)
+            obs = f.create_group('observations')
+            act = f.create_group('actions')
+            num_items = len(self.data_dict['/observations/head_rgb'])
+            obs.create_dataset('head_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
+            obs.create_dataset('left_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
+            obs.create_dataset('right_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
+            obs.create_dataset('head_depth', shape=(num_items, 240, 320), dtype='float32')
+            obs.create_dataset('left_hand_depth', shape=(num_items, 240, 320), dtype='float32')
+            obs.create_dataset('right_hand_depth', shape=(num_items, 240, 320), dtype='float32')
+            # per-arm joint count comes from the active robot bundle (6 for R1/R1_Lite, 7 for R1Pro)
+            obs.create_dataset('left_arm_joint_pos', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
+            obs.create_dataset('right_arm_joint_pos', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
+            obs.create_dataset('left_gripper_joint_pos', shape=(num_items,), dtype='float32')
+            obs.create_dataset('right_gripper_joint_pos', shape=(num_items,), dtype='float32')
+            obs.create_dataset('left_arm_joint_vel', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
+            obs.create_dataset('right_arm_joint_vel', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
+            obs.create_dataset('left_gripper_joint_vel', shape=(num_items,), dtype='float32')
+            obs.create_dataset('right_gripper_joint_vel', shape=(num_items,), dtype='float32')
+            act.create_dataset('left_arm_action', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
+            act.create_dataset('right_arm_action', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
+            act.create_dataset('left_gripper_action', shape=(num_items,), dtype='float32')
+            act.create_dataset('right_gripper_action', shape=(num_items,), dtype='float32')
+
+            f.create_dataset('score', shape=(num_items,), dtype='int32')
+            f.create_dataset('current_time', shape=(num_items,), dtype='float32')
+
+            for name, value in self.data_dict.items():
+                f[name][...] = value
+        # Emit the terminal marker only after the file has been closed. The
+        # rule-generation shell script follows this marker and reports exactly
+        # once per fully completed episode.
+        print(f"Writing {status} episode to {output_file} (score={score_value})")
 
 
     def _record_data(self):

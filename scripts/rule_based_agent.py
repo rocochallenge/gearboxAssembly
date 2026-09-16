@@ -20,10 +20,25 @@ parser.add_argument(
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--no_action", action="store_true", default=False, help="Do not apply actions to the robot.")
+parser.add_argument(
+    "--keep_failed",
+    nargs="?",
+    const=0,
+    default=None,
+    type=int,
+    metavar="MIN_SCORE",
+    help=(
+        "Save failed episodes whose final score is at least MIN_SCORE. "
+        "A bare --keep_failed is equivalent to --keep_failed 0."
+    ),
+)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
+
+if args_cli.keep_failed is not None and not 0 <= args_cli.keep_failed <= 5:
+    parser.error("--keep_failed MIN_SCORE must be an integer in the range 0..5")
 
 print(f"args_cli: {args_cli}")
 print(f"Python path: {sys.path}")
@@ -49,6 +64,9 @@ def main():
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
+    # Keep this as an environment-level option so the default behavior of
+    # saving successful episodes only is unchanged for all other entrypoints.
+    env_cfg.keep_failed = args_cli.keep_failed
     # create environment
     env = gym.make(args_cli.task, cfg=env_cfg, use_action=not args_cli.no_action)
 

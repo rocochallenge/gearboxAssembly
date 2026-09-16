@@ -17,6 +17,7 @@ for their rule-policy reference; the gearbox-recovery env_cfg reads
 ``ACTIVE_ROBOT_BUNDLE.recovery_rule_policy_class``.
 """
 
+import os
 from dataclasses import dataclass
 
 from isaaclab.assets import ArticulationCfg
@@ -175,7 +176,27 @@ GALAXEA_R1_PRO_BUNDLE = RobotBundle(
 )
 
 
-# The single switch. Edit this line to flip the active robot for all tasks.
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_PRO_BUNDLE
-# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE
-# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE
+# The default remains R1Pro for existing entrypoints.  A process can select a
+# different embodiment before importing the task package, which lets data
+# generation scripts run different robots concurrently without editing source:
+#
+#   ROCO_ROBOT_BUNDLE=r1_lite python scripts/rule_based_agent.py ...
+#
+# The env_cfg classes read this value at import/class-definition time, so the
+# variable must be exported before the Python process starts.
+_ROBOT_BUNDLES = {
+    "r1": GALAXEA_R1_BUNDLE,
+    "r1_lite": GALAXEA_R1_LITE_BUNDLE,
+    "r1lite": GALAXEA_R1_LITE_BUNDLE,
+    "r1_pro": GALAXEA_R1_PRO_BUNDLE,
+    "r1pro": GALAXEA_R1_PRO_BUNDLE,
+}
+_requested_bundle = os.environ.get("ROCO_ROBOT_BUNDLE", "").strip().lower()
+if _requested_bundle:
+    try:
+        ACTIVE_ROBOT_BUNDLE: RobotBundle = _ROBOT_BUNDLES[_requested_bundle]
+    except KeyError as exc:
+        valid = ", ".join(sorted(_ROBOT_BUNDLES))
+        raise ValueError(f"Unknown ROCO_ROBOT_BUNDLE={_requested_bundle!r}; choose one of: {valid}") from exc
+else:
+    ACTIVE_ROBOT_BUNDLE = GALAXEA_R1_PRO_BUNDLE
