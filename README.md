@@ -1,323 +1,197 @@
-# RoCo Challenge: Robotic Collaborative Assembling - HMI Workshop @ AAAI 2026
+# RoCo Challenge: Gearbox Assembly
+
+An Isaac Lab simulation for bimanual gearbox assembly with Galaxea R1, R1 Lite,
+and R1Pro robots. It includes scripted assembly, partial-assembly and recovery
+scenarios, camera recording, and an ACT policy runner for the original R1.
+
+See the [RoCo Challenge @ AAAI 2026](https://rocochallenge.github.io/RoCo2026/doc.html)
+for challenge details.
+
 ![RoCo Challenge Poster](docs/images/poster.png)
-Code Repository for the [RoCo Challenge@AAAI 2026](https://rocochallenge.github.io/RoCo2026/doc.html)
-
-The Gearbox Assembly Assistance Challenge evaluates bimanual robotic systems in collaborative gearbox assembly within manufacturing environments. It targets scenarios where robots work seamlessly with human operators.
-
-#### ⭐🎄 News 24 Dec 2025:
-Merry Christmas! We added 3 new environment definitions for task 2 (resume from partial state) and task 3 (error detection and recovery), serving as environment settings for the final examination, and also to facilitate your self-evaluation of your own models. Please check out the quickstart commands [here](#run-the-rule-based-agent).
-
-## Overview
-
-In this project, we setup a Isaac Lab environment for the Galaxea R1 gearbox assembly task. 
 
 ## Installation
-### ⚙️ Model File Management Instructions
 
----
+You will need:
 
-**⚠️ IMPORTANT: This Repository Contains Large Files (LFS)!**
+- [Isaac Sim 5.1.0](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html), installed using NVIDIA's workstation instructions, and a machine meeting its [system requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements).
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), Git, and Git LFS.
 
-The **gearbox part models (`.usd` files)** within this repository are managed using **Git Large File Storage (LFS)**. If you clone the repository without using LFS, these files will not be properly checked out; you will only receive text pointers instead of the actual model data.
+The project uses Python 3.11 and Isaac Lab 2.3.0. The setup below installs the
+Python dependencies into the project's `.venv`; uv can download Python if needed.
 
-**To correctly retrieve the model files after cloning or pulling the repository content, you must follow these steps:**
-
-1.  ### **Install and Initialize Git LFS**
-
-    Ensure Git LFS is installed on your system. You can set it up by running the following command:
-
-    ```bash
-    git lfs install
-    ```
-
-    *This command only needs to be run **once** on your machine.*
-
-2.  ### **Fetch the Model Files**
-
-    If you are cloning the repository for the first time, or if you cloned it before running `git lfs install`, run the following commands to check out all LFS-managed files:
-
-    ```bash
-    git lfs pull
-    ```
-
-    *(Alternatively, you can use `git lfs fetch` followed by `git lfs checkout`)*
-
-    **Please ensure these steps are completed before attempting to compile or run any code that depends on the `.usd` model files.**
-
-**Due to LFS bandwidth limits, the LFS files may fail to download. As an alternative, download the LFS files by clicking [this link](https://drive.google.com/file/d/1L7u89xxiHGkd72CzvZln3P5uPPqMu7b7/view?usp=drive_link), extract it, and place its contents into `gearboxAssembly/source/Galaxea_Lab_External/assets`.**
-
----
-### Installation Steps
-
-This project uses [uv](https://docs.astral.sh/uv/) to manage a project-local `.venv` that pulls in Isaac Lab 2.3.0 (as a git submodule) and its dependencies. Isaac Sim 5.1.0 itself is provided either by a locally installed binary (recommended — no multi-GB pip download) **or** by a pip package. Both options are documented below.
-
-#### Prerequisites
-- x86-64 Linux, a GPU/driver compatible with Isaac Sim 5.1 ([requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements))
-- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- Git + Git LFS (see the previous section)
-- Python 3.11 (uv will fetch it automatically if missing)
-
-#### Clone with submodules
+### Download the repository and assets
 
 ```bash
-git clone --recursive <this-repo-url> gearboxAssembly
+git lfs install
+git clone --recursive https://github.com/rocochallenge/gearboxAssembly.git
 cd gearboxAssembly
-# or, if you already cloned without --recursive:
 git submodule update --init --recursive
 git lfs pull
 ```
 
-The `IsaacLab/` directory is a submodule pinned to tag `v2.3.0`.
+For an existing clone, run the last two commands from the repository root.
+Git LFS is required to download the actual robot and gearbox models.
+If the download fails because of LFS bandwidth limits, use the
+[asset archive](https://drive.google.com/file/d/1L7u89xxiHGkd72CzvZln3P5uPPqMu7b7/view?usp=drive_link)
+and extract its contents into `source/Galaxea_Lab_External/assets`.
 
----
+### Set up the environment
 
-#### Option A — Binary Isaac Sim 5.1.0 (recommended)
+Run setup and all examples from the repository root. If a Conda environment is
+active, run `conda deactivate` first.
 
-Best if you already have (or are willing to install) the Isaac Sim 5.1.0 binary tarball. It avoids pip-downloading ~10 GB of isaacsim wheels into the venv.
-
-1. **Download Isaac Sim 5.1.0** from NVIDIA's [Omniverse Launcher](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) (or unpack a tarball). Note its install directory; the examples below assume `/home/hliu/isaac-sim-5.1`.
-
-2. **Link Isaac Lab to the binary install** (IsaacLab expects a `_isaac_sim` entry pointing at the Kit runtime):
-
-    ```bash
-    ln -s /home/hliu/isaac-sim-5.1 IsaacLab/_isaac_sim
-    ```
-
-3. **Create the uv venv.** This installs Python 3.11, torch 2.7.0 + CUDA 12.8, IsaacLab 2.3.0 (editable from the submodule), and `Galaxea_Lab_External` (editable from `source/`). It does **not** install `isaacsim` — that comes from the binary:
-
-    ```bash
-    uv sync
-    ```
-
-4. **Activate the environment.** Use the provided helper, which activates the venv, exports `ISAAC_PATH` / `EXP_PATH` / `CARB_APP_PATH`, wires up `PYTHONPATH` (and on Linux `LD_LIBRARY_PATH` + a torch-`libgomp.so.1` preload), and auto-accepts the Omniverse EULA:
-
-    Linux:
-
-    ```bash
-    # If you use conda, deactivate first — conda's isaaclab/isaacsim envs
-    # export sticky ISAAC_PATH / PYTHONPATH that will shadow the binary you
-    # just pointed at. scripts/env.sh will refuse to run otherwise.
-    conda deactivate 2>/dev/null || true
-
-    source scripts/env.sh
-    ```
-
-    Override the Isaac Sim location with `ISAAC_SIM_PATH=/path/to/isaac-sim-5.1 source scripts/env.sh`.
-
-    Windows (PowerShell — must be **dot-sourced**):
-
-    ```powershell
-    . .\scripts\env.ps1
-    ```
-
-    Override the Isaac Sim location with `$env:ISAAC_SIM_PATH = "C:\path\to\isaac-sim-standalone-5.1.0"; . .\scripts\env.ps1` (default: `C:\isaac-sim-standalone-5.1.0`). On Windows the script just puts Isaac Sim's `site\` directory on `PYTHONPATH` — its `sitecustomize.py` does the rest of the wiring (kit / exts / extscache + DLL search paths via `os.add_dll_directory`).
-
-5. **Verify.** You should see the environment banner and be able to launch a rule-based agent:
-
-    ```bash
-    python -c "import torch, isaaclab; print(torch.__version__, isaaclab.__version__)"
-    # -> 2.7.0+cu128 0.47.2
-    python scripts/list_envs.py
-    python scripts/rule_based_agent.py --task=Template-Galaxea-Lab-External-Direct-v0 --enable_cameras
-    ```
-
----
-
-#### Option B — pip-installed Isaac Sim 5.1.0
-
-Use this if you prefer a fully self-contained venv at the cost of disk (~18 GB total) and a longer initial sync.
-
-1. **Edit `pyproject.toml`.** Add `isaacsim` to `dependencies` and the corresponding source/index:
-
-    ```toml
-    [project]
-    dependencies = [
-        # ... existing entries ...
-        "isaacsim[all,extscache]==5.1.0",
-    ]
-
-    [tool.uv.sources]
-    # ... existing entries ...
-    isaacsim = { index = "nvidia" }
-
-    [[tool.uv.index]]
-    name = "nvidia"
-    url = "https://pypi.nvidia.com"
-    explicit = true
-    ```
-
-2. **Sync and activate.** No `scripts/env.sh` needed — the `isaacsim` wheel installs `.pth` files and `$VENV/bin/isaacsim`, so plain venv activation is enough:
-
-    ```bash
-    uv sync
-    conda deactivate 2>/dev/null || true
-    source .venv/bin/activate
-    export OMNI_KIT_ACCEPT_EULA=YES
-    ```
-
-3. **Verify** as in Option A.
-
----
-
-#### Notes
-
-- **Editable install of the local package.** `source/Galaxea_Lab_External` is already wired as an editable dep in `pyproject.toml` — `uv sync` installs it. You do **not** need to run `pip install -e source/Galaxea_Lab_External` manually.
-- **Conda-env leakage.** If you normally live in a conda env that activates Isaac Sim (e.g. `isaaclab`), run `conda deactivate` before `source scripts/env.sh`. The conda activation script exports `ISAAC_PATH`, `CARB_APP_PATH`, `PYTHONPATH`, `LD_LIBRARY_PATH` pointing at whichever Isaac Sim that env was built against; those leak into child processes and silently shadow whatever this project points at. `scripts/env.sh` refuses to run when `$CONDA_DEFAULT_ENV` is set to guard against this.
-- **inotify watch warnings.** On first launch, Kit may log many `errno=28 No space left on device` messages — that's the inotify watch limit being hit, not disk pressure. They're non-fatal. To silence: `sudo sysctl fs.inotify.max_user_watches=524288`.
-- **EULA.** `scripts/env.sh` exports `OMNI_KIT_ACCEPT_EULA=YES` for you; on Option B you must do it yourself on first run (or answer `Yes` at the prompt).
-
-- Verify that the extension is correctly installed by:
-
-    - Listing the available tasks:
-
-        Note: It the task name changes, it may be necessary to update the search pattern `"Template-"`
-        (in the `scripts/list_envs.py` file) so that it can be listed.
-
-        ```bash
-        # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-        python scripts/list_envs.py
-        ```
-
-
-    - Running a task with dummy agents:
-
-        These include dummy agents that output zero or random agents. They are useful to ensure that the environments are configured correctly.
-
-        - Zero-action agent
-
-            ```bash
-            # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-            python scripts/zero_agent.py --task=<TASK_NAME>
-            ```
-        - Random-action agent
-
-            ```bash
-            # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-            python scripts/random_agent.py --task=<TASK_NAME>
-            ```
-
-### Run the rule-based agent
-
-- **Running the R1 gearbox assembly task with rule-based agent**
-    ```bash
-    # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-    python scripts/rule_based_agent.py --task=Template-Galaxea-Lab-External-Direct-v0 --enable_cameras
-    ```
-
-- **Running the R1 gearbox assembly task with ACT agent**
-    ```bash
-    # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-    python scripts/VLA_agent.py --task=Template-Galaxea-Lab-Agent-Direct-v0 --enable_cameras --checkpoint='Your-VLA-Checkpoint-File-Path'
-    ```
-
-- **Running the R1 gearbox assembly recovery tasks with rule-based agent (task 2 and 3 in the challenge setting)**
-    
-    We defined 3 different environments for task 2 and 3, where:
-
-    The fourth gear (sun gear) is not yet installed, for task 2.
-    ```bash
-    python scripts/rule_based_agent.py --task=Gearbox-Partial-Lackfourth --enable_cameras
-    ```
-    The fourth gear is placed on top of one installed gear by mistake, for task 3.
-    ```bash
-    python scripts/rule_based_agent.py --task=Gearbox-Recovery-Misplacedfourth --enable_cameras
-    ```
-    The fourth gear is inclined during installation, for task 3. Rule-based agent do not perform well in this setting, and thus not provided yet. Use --no_action flag to disable actions when checking out the environment.
-    ```bash
-    python scripts/rule_based_agent.py --task=Gearbox-Recovery-Inclinedfourth --enable_cameras --no_action
-    ```
-
-### Switching between R1 and R1_Lite
-
-The repo ships with two robot configs:
-- `GALAXEA_R1_BUNDLE` (default) — the original Galaxea R1 (`r1_DVT_*.usd`).
-- `GALAXEA_R1_LITE_BUNDLE` — the new R1_Lite (mobile-base variant; `r1_lite.usd`, base welded for tabletop tasks).
-
-To switch, edit one line in `source/Galaxea_Lab_External/Galaxea_Lab_External/robots/robot_bundles.py`:
-
-```python
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE  # was GALAXEA_R1_BUNDLE
-```
-
-All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxea-Lab-Agent-Direct-v0`, and the `Gearbox-*` recovery tasks) read from `ACTIVE_ROBOT_BUNDLE`, so no other edits are needed. **Edit-then-restart is the supported workflow** — `ACTIVE_ROBOT_BUNDLE` is read at class-definition time by the env_cfg defaults, so reassigning it at runtime after the env_cfgs have been imported has no effect on already-defined classes.
-
-**Caveat — rule-based agent on R1_Lite.** `r1_lite_rule_policy.py` and `r1_lite_recovery_rule_policy.py` are forks of the R1 policies with mechanical joint-name renames so the env loads, but their pose/offset constants are mainly tuned for R1 dimensions. Running `rule_based_agent.py` against R1_Lite without `--no_action` may produce unreachable motions. Use `--no_action` to inspect the scene visually.
-
-**Caveat — R1_Lite head cameras.** The vendor URDF defines `camera_head_left_link` (collision only, no visual) and `camera_head_right_link` (empty link, no visual / collision) and does not reference the `camera_head_*_link.STL` meshes via `<visual>` tags. The `Camera` sensor in the env still attaches to those frames correctly, but the rendered scene will not show a visible camera body for the head. STL files for both head cameras are committed under `assets/Robots/R1_Lite/meshes/` and can be wired in via a URDF edit + re-conversion if a visible head body is needed.
-
-### Re-running the R1_Lite URDF→USD conversion
-
-If the vendor URDF under `source/Galaxea_Lab_External/assets/Robots/R1_Lite/urdf/` changes, regenerate the USD:
+On **Linux (Bash or Zsh)**, replace the Isaac Sim path below if you installed it
+elsewhere. Create the link once, then install the dependencies and activate:
 
 ```bash
-conda deactivate 2>/dev/null || true
+ln -s "$HOME/isaac-sim-5.1" IsaacLab/_isaac_sim
+uv sync
 source scripts/env.sh
-python scripts/convert_r1_lite_urdf.py
 ```
 
-The script rewrites `package://mobiman/...` mesh refs to relative paths in a temp URDF copy (the committed URDF is never modified) and runs `isaaclab.sim.converters.UrdfConverter` with `fix_base=True` and `make_instanceable=True`. Output is a 7-file USD bundle at `assets/Robots/R1_Lite/`:
-- `r1_lite.usd` — thin wrapper, what env_cfgs reference.
-- `configuration/r1_lite_base.usd` — bulk geometry (~19 MB).
-- `configuration/r1_lite_physics.usd`, `configuration/r1_lite_robot.usd`, `configuration/r1_lite_sensor.usd` — composition layers.
-- `config.yaml`, `.asset_hash` — metadata.
+In each new terminal, run `source scripts/env.sh` again before launching a task.
 
-All 5 `*.usd` files route through Git LFS automatically.
+On **Windows (PowerShell)**, set the path to your Isaac Sim installation:
 
-### Set up IDE (Optional)
+```powershell
+uv sync
+$env:ISAAC_SIM_PATH = "C:\isaac-sim-standalone-5.1.0"
+. .\scripts\env.ps1
+```
 
-To setup the IDE, please follow these instructions:
+Repeat the last two lines in each new PowerShell session. Both activation helpers
+set Isaac Sim's EULA acceptance by default.
 
-- Run VSCode Tasks, by pressing `Ctrl+Shift+P`, selecting `Tasks: Run Task` and running the `setup_python_env` in the drop down menu.
-  When running this task, you will be prompted to add the absolute path to your Isaac Sim installation.
+## Run the assembly task
 
-If everything executes correctly, it should create a file .python.env in the `.vscode` directory.
-The file contains the python paths to all the extensions provided by Isaac Sim and Omniverse.
-This helps in indexing all the python modules for intelligent suggestions while writing code.
+Choose a robot before starting the Python process:
 
-### Setup as Omniverse Extension (Optional)
+| Robot | `ROCO_ROBOT_BUNDLE` value |
+| --- | --- |
+| R1Pro (default) | `r1_pro` |
+| R1 Lite | `r1_lite` |
+| Original R1 | `r1` |
 
-We provide an example UI extension that will load upon enabling your extension defined in `source/Galaxea_Lab_External/Galaxea_Lab_External/ui_extension_example.py`.
+The following examples use Bash or Zsh. Change the selection to run another robot:
 
-To enable your extension, follow these steps:
+```bash
+export ROCO_ROBOT_BUNDLE=r1_pro
+python scripts/rule_based_agent.py \
+  --task Template-Galaxea-Lab-External-Direct-v0 \
+  --num_envs 1 --enable_cameras
+```
 
-1. **Add the search path of this project/repository** to the extension manager:
-    - Navigate to the extension manager using `Window` -> `Extensions`.
-    - Click on the **Hamburger Icon**, then go to `Settings`.
-    - In the `Extension Search Paths`, enter the absolute path to the `source` directory of this project/repository.
-    - If not already present, in the `Extension Search Paths`, enter the path that leads to Isaac Lab's extension directory directory (`IsaacLab/source`)
-    - Click on the **Hamburger Icon**, then click `Refresh`.
+In PowerShell, select the robot with `$env:ROCO_ROBOT_BUNDLE = "r1_pro"` and put
+the Python command on one line. If no robot is selected, R1Pro is used.
+Start a new Python process after changing robots.
 
-2. **Search and enable your extension**:
-    - Find your extension under the `Third Party` category.
-    - Toggle it to enable your extension.
+The simulator opens a window and runs repeated episodes. Close the window or
+press `Ctrl+C` to stop. Use `--num_envs 1` with the supplied assembly policies.
+R1 Lite's fourth-gear placement remains experimental; complete assembly and
+recovery behavior still need validation for R1Pro and R1 Lite.
 
+### Faster runs with camera recording
+
+For R1Pro or R1 Lite, add `--headless --fast_physics`:
+
+```bash
+python scripts/rule_based_agent.py \
+  --task Template-Galaxea-Lab-External-Direct-v0 \
+  --num_envs 1 --headless --enable_cameras --fast_physics
+```
+
+`--headless` hides the simulator window. Keep `--enable_cameras` to retain camera
+images and demonstrations. `--fast_physics` reduces physics computation and can
+change assembly outcomes; omit it to use the standard physics settings.
+This flag is available for R1Pro and R1 Lite.
+
+## Recordings
+
+For the assembly task above, demonstrations are saved as **HDF5 files** containing
+RGB and depth images from three cameras, joint states, actions, scores, and
+timestamps at 20 Hz. MP4 videos are not created automatically.
+
+The default output folder is `../data`, relative to the working directory. When
+running from the repository root, this is a `data` folder beside `gearboxAssembly`.
+To choose another folder, set this before starting the runner:
+
+```bash
+export ROCO_DATA_DIR="$PWD/data"
+```
+
+In PowerShell, use `$env:ROCO_DATA_DIR = "$PWD\data"`.
+
+By default, only complete, successful assemblies (score 5/5) are saved. To retain
+partial or unsuccessful attempts, append one of these options to the assembly
+command:
+
+| Option | Episodes saved in addition to successes |
+| --- | --- |
+| `--keep_failed` | All unsuccessful episodes |
+| `--keep_failed 3` | Unsuccessful episodes with a final score of at least 3 |
+
+Successful files are named `data_<timestamp>.hdf5`. Retained unsuccessful files
+are written to `fail/fail_score<score>_data_<timestamp>.hdf5` within the output
+folder.
+
+Files are written when an episode finishes; the terminal prints the saved path.
+Stopping in the middle of an episode does not save that unfinished episode.
+
+## Other tasks
+
+### Partial assembly and recovery
+
+These scenarios start from an already partially assembled gearbox:
+
+| Task name | Starting condition |
+| --- | --- |
+| `Gearbox-Partial-Lackfourth` | The fourth (central) gear has not been installed |
+| `Gearbox-Recovery-Misplacedfourth` | The fourth gear is resting on an installed gear |
+| `Gearbox-Recovery-Inclinedfourth` | The fourth gear is tilted during insertion |
+
+For example, run the partial-assembly scenario with the original R1:
+
+```bash
+ROCO_ROBOT_BUNDLE=r1 python scripts/rule_based_agent.py \
+  --task Gearbox-Partial-Lackfourth --num_envs 1 --enable_cameras
+```
+
+Replace the task name with `Gearbox-Recovery-Misplacedfourth` for the misplaced
+gear scenario. The inclined-gear scenario has no working scripted recovery;
+inspect it with robot actions disabled:
+
+```bash
+ROCO_ROBOT_BUNDLE=r1 python scripts/rule_based_agent.py \
+  --task Gearbox-Recovery-Inclinedfourth \
+  --num_envs 1 --enable_cameras --no_action
+```
+
+Recovery recordings use `../data/data_recovery_<timestamp>.hdf5`. The assembly
+runner's `ROCO_DATA_DIR` and `--keep_failed` settings do not apply to these tasks.
+
+### Run an ACT checkpoint
+
+The supplied ACT runner uses the original R1. Provide a checkpoint matching its
+ACT model configuration and place the accompanying `dataset_stats.pkl` in the
+same directory as the checkpoint:
+
+```bash
+ROCO_ROBOT_BUNDLE=r1 python scripts/VLA_agent.py \
+  --task Template-Galaxea-Lab-Agent-Direct-v0 \
+  --num_envs 1 --enable_cameras \
+  --checkpoint /path/to/policy_best.ckpt
+```
 
 ## Troubleshooting
 
-### Pylance Missing Indexing of Extensions
-
-In some VsCode versions, the indexing of part of the extensions is missing.
-In this case, add the path to your extension in `.vscode/settings.json` under the key `"python.analysis.extraPaths"`.
-
-```json
-{
-    "python.analysis.extraPaths": [
-        "<path-to-ext-repo>/source/Galaxea_Lab_External"
-    ]
-}
-```
-
-### Pylance Crash
-
-If you encounter a crash in `pylance`, it is probable that too many files are indexed and you run out of memory.
-A possible solution is to exclude some of omniverse packages that are not used in your project.
-To do so, modify `.vscode/settings.json` and comment out packages under the key `"python.analysis.extraPaths"`
-Some examples of packages that can likely be excluded are:
-
-```json
-"<path-to-isaac-sim>/extscache/omni.anim.*"         // Animation packages
-"<path-to-isaac-sim>/extscache/omni.kit.*"          // Kit UI tools
-"<path-to-isaac-sim>/extscache/omni.graph.*"        // Graph UI tools
-"<path-to-isaac-sim>/extscache/omni.services.*"     // Services tools
-...
-```
+- **`ModuleNotFoundError: No module named 'h5py'` or another project dependency:**
+  run `uv sync`, then activate with `source scripts/env.sh` (or `. .\scripts\env.ps1`
+  on Windows) in the same terminal used to launch the task.
+- **Isaac Sim cannot be found:** check the installation path. On Linux, set
+  `export ISAAC_SIM_PATH="/path/to/isaac-sim-5.1"` before sourcing `scripts/env.sh`;
+  on Windows, set `$env:ISAAC_SIM_PATH` before dot-sourcing `scripts/env.ps1`.
+- **Missing robot or gearbox assets:** run `git lfs pull` from the repository root.
+  Use the asset archive above if the download is blocked by the LFS quota.
+- **No assembly recordings appear:** keep `--enable_cameras`, wait for an episode
+  to finish, and use `--keep_failed` if you want to save unsuccessful attempts.
+  Check `ROCO_DATA_DIR` or the default `../data` folder.

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Activate the uv venv and wire up the system-installed Isaac Sim binary.
 #
-# Usage (must be sourced, not executed):
+# Usage (must be sourced, not executed; works from bash and zsh):
 #     source scripts/env.sh
 #
-# Override the Isaac Sim location with:
-#     ISAAC_SIM_PATH=/path/to/isaac-sim-5.1 source scripts/env.sh
+# Isaac Sim location is resolved in this order (first hit wins):
+#     1. $ISAAC_SIM_PATH, if already exported:
+#            ISAAC_SIM_PATH=/path/to/isaac-sim-5.1 source scripts/env.sh
+#     2. the IsaacLab/_isaac_sim symlink (README step 2 creates it)
+#     3. $HOME/isaac-sim-5.1
 #
 # What this does:
 #   1. Refuses to run if a conda env is active (its activation script exports
@@ -24,20 +27,48 @@
 #      Isaac Sim's (same trick the isaaclab conda env activation uses).
 #   6. Auto-accepts the Omniverse EULA (OMNI_KIT_ACCEPT_EULA=YES).
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+# Locate this file and detect "sourced vs executed" in both bash and zsh.
+# zsh has no BASH_SOURCE; when sourcing it sets $0 to the file (FUNCTION_ARGZERO,
+# on by default — Isaac Sim's own setup_conda_env.sh relies on the same thing)
+# and ZSH_EVAL_CONTEXT contains ":file".
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  _env_sh_file="$0"
+  [[ "${ZSH_EVAL_CONTEXT:-}" == *:file* ]] || _env_sh_executed=1
+else
+  _env_sh_file="${BASH_SOURCE[0]:-$0}"
+  [[ "${BASH_SOURCE[0]:-}" != "$0" ]] || _env_sh_executed=1
+fi
+if [[ -n "${_env_sh_executed:-}" ]]; then
   echo "[env.sh] This file must be SOURCED, not executed:  source scripts/env.sh" >&2
+  unset _env_sh_file _env_sh_executed
   exit 1
 fi
+unset _env_sh_executed
 
 if [[ -n "${CONDA_DEFAULT_ENV:-}" && "${CONDA_DEFAULT_ENV}" != "base" ]]; then
   echo "[env.sh] A conda env ('${CONDA_DEFAULT_ENV}') is active. Run 'conda deactivate' first — conda activation scripts for isaaclab/isaacsim leak ISAAC_PATH/CARB_APP_PATH/PYTHONPATH that will shadow the binary pointed to by ISAAC_SIM_PATH." >&2
   return 1
 fi
 
-_env_sh_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+_env_sh_dir="$(cd -- "$(dirname -- "${_env_sh_file}")" && pwd -P)"
 _proj_root="$(cd -- "${_env_sh_dir}/.." && pwd -P)"
+unset _env_sh_file
 
-ISAAC_SIM_PATH="${ISAAC_SIM_PATH:-/home/hliu/isaac-sim-5.1}"
+if [[ -z "${ISAAC_SIM_PATH:-}" ]]; then
+  for _cand in "${_proj_root}/IsaacLab/_isaac_sim" "${HOME}/isaac-sim-5.1"; do
+    if [[ -f "${_cand}/setup_conda_env.sh" ]]; then
+      ISAAC_SIM_PATH="$(cd -- "${_cand}" && pwd -P)"   # resolve the symlink
+      break
+    fi
+  done
+  unset _cand
+fi
+
+if [[ -z "${ISAAC_SIM_PATH:-}" ]]; then
+  echo "[env.sh] Could not locate an Isaac Sim install. Checked \$ISAAC_SIM_PATH, ${_proj_root}/IsaacLab/_isaac_sim and ${HOME}/isaac-sim-5.1. Either 'ln -s /path/to/isaac-sim-5.1 IsaacLab/_isaac_sim' or 'export ISAAC_SIM_PATH=/path/to/isaac-sim-5.1'." >&2
+  unset _env_sh_dir _proj_root
+  return 1
+fi
 
 if [[ ! -f "${ISAAC_SIM_PATH}/setup_conda_env.sh" ]]; then
   echo "[env.sh] ISAAC_SIM_PATH='${ISAAC_SIM_PATH}' does not look like an Isaac Sim install (missing setup_conda_env.sh)" >&2

@@ -11,8 +11,8 @@ supported-markers = [
 ]
 
 [manifest]
+constraints = [{ name = "h5py", marker = "sys_platform == 'win32'", specifier = "==3.14.0" }]
 overrides = [
-    { name = "h5py", marker = "sys_platform == 'win32'", specifier = "==3.14.0" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = "==306" },
     { name = "starlette", specifier = "==0.49.1" },
 ]
@@ -397,6 +397,7 @@ version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "galaxea-lab-external", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "h5py", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
     { name = "isaaclab", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
     { name = "isaaclab-assets", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
     { name = "isaaclab-mimic", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
@@ -410,6 +411,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "galaxea-lab-external", editable = "source/Galaxea_Lab_External" },
+    { name = "h5py" },
     { name = "isaaclab", editable = "IsaacLab/source/isaaclab" },
     { name = "isaaclab-assets", editable = "IsaacLab/source/isaaclab_assets" },
     { name = "isaaclab-mimic", editable = "IsaacLab/source/isaaclab_mimic" },
@@ -463,10 +465,11 @@ name = "h5py"
 version = "3.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "platform_machine == 'AMD64' and sys_platform == 'win32'" },
+    { name = "numpy", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5d/57/dfb3c5c3f1bf5f5ef2e59a22dec4ff1f3d7408b55bfcefcfb0ea69ef21c6/h5py-3.14.0.tar.gz", hash = "sha256:2372116b2e0d5d3e5e705b7f663f7c8d96fa79a4052d250484ef91d24d6a08f4", size = 424323, upload-time = "2025-06-06T14:06:15.01Z" }
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/d4/d461649cafd5137088fb7f8e78fdc6621bb0c4ff2c090a389f68e8edc136/h5py-3.14.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:723a40ee6505bd354bfd26385f2dae7bbfa87655f4e61bab175a49d72ebfc06b", size = 4516618, upload-time = "2025-06-06T14:04:52.467Z" },
     { url = "https://files.pythonhosted.org/packages/db/0c/6c3f879a0f8e891625817637fad902da6e764e36919ed091dc77529004ac/h5py-3.14.0-cp311-cp311-win_amd64.whl", hash = "sha256:d2744b520440a996f2dae97f901caa8a953afc055db4673a993f2d87d7f38713", size = 2874888, upload-time = "2025-06-06T14:04:56.95Z" },
 ]
 
@@ -740,6 +743,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "ipywidgets", specifier = "==8.1.5" },
+    { name = "robomimic", marker = "extra == 'all'", git = "https://github.com/ARISE-Initiative/robomimic.git?rev=v0.4.0" },
+    { name = "robomimic", marker = "extra == 'robomimic'", git = "https://github.com/ARISE-Initiative/robomimic.git?rev=v0.4.0" },
     { name = "tomli" },
 ]
 provides-extras = ["robomimic", "all"]
@@ -749,7 +754,7 @@ name = "isaaclab-rl"
 version = "0.4.4"
 source = { editable = "IsaacLab/source/isaaclab_rl" }
 dependencies = [
-    { name = "h5py", marker = "platform_machine == 'AMD64' and sys_platform == 'win32'" },
+    { name = "h5py", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
     { name = "hydra-core", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
     { name = "moviepy", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
     { name = "numpy", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
