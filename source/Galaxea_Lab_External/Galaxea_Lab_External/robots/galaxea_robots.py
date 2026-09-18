@@ -306,9 +306,14 @@ GALAXEA_R1_LITE_CFG = ArticulationCfg(
             "right_arm_joint5":   0.09,
             "right_arm_joint6":   -0.18,
             "right_gripper_finger_joint1": 0.04,
-            "torso_joint1": 0.4,
-            "torso_joint2": -0.66,
-            "torso_joint3": -0.8,
+            # Unfold the lower torso: advance the shoulders ~58 mm and raise
+            # them ~31 mm while preserving their pitch and table clearance.
+            # The former -0.66/-0.8 pose could not reach a gear at x=0.65,
+            # y=0.02 with an upright gripper. Checked against both URDF arms
+            # over the pickup workspace and carrier insertion waypoints.
+            "torso_joint1": 0.15,
+            "torso_joint2": 0.0,
+            "torso_joint3": -0.39,
         },
         pos=(0.0, 0.0, 0.0),
         rot=(1.0, 0.0, 0.0, 0.0),

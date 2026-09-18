@@ -507,6 +507,8 @@ class GalaxeaLabAgentEnv(DirectRLEnv):
         print(f"--------------------------------RESET--------------------------------")
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
+        if hasattr(getattr(self, "rule_policy", None), "reset_actuator_settings"):
+            self.rule_policy.reset_actuator_settings()
         super()._reset_idx(env_ids)
 
         self.rule_policy = self.cfg.rule_policy_class(sim_utils.SimulationContext.instance(), self.scene, self.obj_dict)

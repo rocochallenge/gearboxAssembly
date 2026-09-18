@@ -21,6 +21,10 @@ parser.add_argument("--num_envs", type=int, default=None, help="Number of enviro
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--no_action", action="store_true", default=False, help="Do not apply actions to the robot.")
 parser.add_argument(
+    "--fast_physics", action="store_true",
+    help="Use 32/8 solver iterations for R1Pro or R1 Lite (default 128/128); keeps timestep and cameras unchanged.",
+)
+parser.add_argument(
     "--keep_failed",
     nargs="?",
     const=0,
@@ -56,6 +60,7 @@ import isaaclab_tasks
 from isaaclab_tasks.utils import parse_env_cfg
 
 import Galaxea_Lab_External.tasks
+from Galaxea_Lab_External.robots.physics_profiles import use_fast_physics
 
 
 def main():
@@ -67,6 +72,9 @@ def main():
     # Keep this as an environment-level option so the default behavior of
     # saving successful episodes only is unchanged for all other entrypoints.
     env_cfg.keep_failed = args_cli.keep_failed
+    if args_cli.fast_physics:
+        use_fast_physics(env_cfg)
+        print(f"[INFO]: {env_cfg.robot_bundle.name} fast physics: 32 position / 8 velocity solver iterations")
     # create environment
     env = gym.make(args_cli.task, cfg=env_cfg, use_action=not args_cli.no_action)
 

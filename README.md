@@ -91,7 +91,7 @@ Best if you already have (or are willing to install) the Isaac Sim 5.1.0 binary 
 
 4. **Activate the environment.** Use the provided helper, which activates the venv, exports `ISAAC_PATH` / `EXP_PATH` / `CARB_APP_PATH`, wires up `PYTHONPATH` (and on Linux `LD_LIBRARY_PATH` + a torch-`libgomp.so.1` preload), and auto-accepts the Omniverse EULA:
 
-    Linux:
+    Linux (bash or zsh):
 
     ```bash
     # If you use conda, deactivate first — conda's isaaclab/isaacsim envs
@@ -102,7 +102,7 @@ Best if you already have (or are willing to install) the Isaac Sim 5.1.0 binary 
     source scripts/env.sh
     ```
 
-    Override the Isaac Sim location with `ISAAC_SIM_PATH=/path/to/isaac-sim-5.1 source scripts/env.sh`.
+    By default `scripts/env.sh` follows the `IsaacLab/_isaac_sim` symlink from step 2 (falling back to `$HOME/isaac-sim-5.1`). Override with `ISAAC_SIM_PATH=/path/to/isaac-sim-5.1 source scripts/env.sh`.
 
     Windows (PowerShell — must be **dot-sourced**):
 
@@ -234,24 +234,170 @@ The repo ships with three robot configs:
 - `GALAXEA_R1_LITE_BUNDLE` — R1_Lite (mobile-base variant; `r1_lite.usd`, base welded for tabletop tasks).
 - `GALAXEA_R1_PRO_BUNDLE` (default) — R1Pro 2026 with the G1Z gripper (`r1_pro.usd`, converted from the vendor URDF at https://github.com/userguide-galaxea/URDF; 7-DOF arms, 4-DOF torso, base welded).
 
-To switch, edit one line in `source/Galaxea_Lab_External/Galaxea_Lab_External/robots/robot_bundles.py`:
+Select the robot before starting Python, without editing source:
 
-```python
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_PRO_BUNDLE  # or GALAXEA_R1_LITE_BUNDLE / GALAXEA_R1_BUNDLE
+```bash
+export ROCO_ROBOT_BUNDLE=r1_lite  # or r1_pro / r1
 ```
 
-All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxea-Lab-Agent-Direct-v0`, and the `Gearbox-*` recovery tasks) read from `ACTIVE_ROBOT_BUNDLE`, so no other edits are needed. The action/observation vector size also follows the bundle (`2 * num_arm_joints + 2`: 14 for R1/R1_Lite, 16 for R1Pro). **Edit-then-restart is the supported workflow** — `ACTIVE_ROBOT_BUNDLE` is read at class-definition time by the env_cfg defaults, so reassigning it at runtime after the env_cfgs have been imported has no effect on already-defined classes.
+All three task envs (`Template-Galaxea-Lab-External-Direct-v0`, `Template-Galaxea-Lab-Agent-Direct-v0`, and the `Gearbox-*` recovery tasks) read from `ACTIVE_ROBOT_BUNDLE`, so no other edits are needed. The action/observation vector size also follows the bundle (`2 * num_arm_joints + 2`: 14 for R1/R1_Lite, 16 for R1Pro). Restart Python after changing the selection: `ACTIVE_ROBOT_BUNDLE` is read at class-definition time by the env_cfg defaults, so reassigning it after import has no effect on already-defined classes. If the environment variable is unset, the default remains R1Pro.
 
-**Caveat — rule-based agent on R1_Lite.** `r1_lite_rule_policy.py` and `r1_lite_recovery_rule_policy.py` are forks of the R1 policies with mechanical joint-name renames so the env loads, but their pose/offset constants are mainly tuned for R1 dimensions. Running `rule_based_agent.py` against R1_Lite without `--no_action` may produce unreachable motions. Use `--no_action` to inspect the scene visually.
+**R1 Lite assembly policy.** The bundle selects `R1LiteFeedbackPolicy`, which adapts the feedback pickup, pin insertion, and central-gear meshing stages to Lite's six-axis arms and +X-facing grippers. It verifies each pickup and seating, retries bounded failures, and checks that mounted gears remain seated after retreat. The original timed `R1LiteRulePolicy` remains available for comparisons with `--policy legacy` in the evaluator.
 
-**Caveat — R1_Lite head cameras.** The vendor URDF defines `camera_head_left_link` (collision only, no visual) and `camera_head_right_link` (empty link, no visual / collision) and does not reference the `camera_head_*_link.STL` meshes via `<visual>` tags. The `Camera` sensor in the env still attaches to those frames correctly, but the rendered scene will not show a visible camera body for the head. STL files for both head cameras are committed under `assets/Robots/R1_Lite/meshes/` and can be wired in via a URDF edit + re-conversion if a visible head body is needed.
+Lite uses its own finger geometry, a 50 mm jaw opening, 35 mm pickup clearance, and 45 mm planetary transfer height. Its torso is unfolded to reach the far edge of the randomized workspace; the lower transfer path keeps a carried gear clear of the chest near the rear pin. IK retains the wrist-yaw constraint during transfer.
 
-**R1Pro notes.**
-- The rule policies for R1Pro (`R1ProRulePolicy`, `R1ProRecoveryRulePolicy` in `robots/r1_pro_rule_policy.py`) are thin subclasses of the R1_Lite policies: they only override the robot-frame class attributes (`EE_LINK_SUFFIX = "_arm_link7"`, gripper axis `-Z`, a mirrored ∓90° "gripper down" wrist yaw per arm, IK-based tooth-meshing wiggle, fingertip extension, half-size DLS steps and a 1.25× phase timetable). Everything task-related is shared.
-- R1Pro's arm reach (shoulder to `arm_link7`) spans only 0.30–0.57 m and the G1Z gripper adds ~0.27 m below `arm_link7`, so `GALAXEA_R1_PRO_CFG`'s torso lean, arm ready pose and the policies' ∓135° wrist yaw were chosen by offline URDF-IK against the env's randomized layout (carrier fixed at (0.45, 0), gears per side). If you move the table or change the randomization, re-check reach first — the method and the remaining unreachable corner are in `docs/r1_pro_integration.md` §6 and §10.
-- The vendor URDF ships the four `*_gripper_finger_joint*` prismatic joints with zero limits/effort and no `<mimic>`; the committed `assets/Robots/R1_Pro/urdf/r1pro_2026.urdf` gives them the same treatment as R1_Lite's URDF (joint 1 in `[0, 0.065]`, joint 2 in `[-0.065, 0]` with a `<mimic multiplier=-1>` on joint 1), and only joint 1 is actuated. The Isaac Sim 5.1 importer emits that mimic as a soft 25 Hz PhysX spring, so `scripts/convert_r1_pro_urdf.py` rewrites it to a rigid constraint after conversion. `0.0` is closed, `0.055` is open. The finger collision meshes are replaced by tight pad boxes at conversion time; the convex hull of the vendor finger mesh overlaps the centreline and squeezes gears out.
-- R1Pro's camera links are ROS optical frames, so the camera cfgs use `convention="ros"` with an identity offset.
-- Status: the rule-based agent picks, carries and seats gears on the carrier pins with R1Pro (scores of 1–2 in headless test episodes), but it is not yet as reliable as on R1_Lite — see the known gaps in `docs/r1_pro_integration.md` (far-centre gears out of reach, occasional slip on long cross-body swings, right-arm reach to pins that rotate to the far side of the carrier).
+For the fourth gear, Lite retains its stock 100 N jaw-effort ceiling during meshing; the gentler 8 N R1Pro setting did not retain Lite's shallow rim grasp. Axial position preload remains bounded at 1.5 mm.
+
+The policy uses live simulator object poses, supports one environment, and allows 160 simulated seconds per episode. The later ring and separate recovery sequences still need their own validation. See [R1 Lite assembly validation](docs/r1lite_validation.json) for measured results and limitations.
+
+GPU checks on 2026-09-18 seated and retained the first three gears in **6/6 fresh runs**, covering seeds 43 and 44 with both solver profiles. Their largest final XY error was 0.594 mm against the existing 2 mm tolerance. These are two tested layouts, not a general success-rate guarantee. All 54 regression checks passed (12 Lite, 42 R1Pro/shared).
+
+The **fourth gear remains experimental**: only **1/3 fresh runs with the final Lite settings** passed its post-retreat and parking checks:
+
+| Seed | Physics | Fourth-gear result |
+| --- | --- | --- |
+| 44 | Fast, with cameras and recording | Passed at 82.75 simulated seconds |
+| 43 | Fast | Moved away during release after partial meshing |
+| 44 | Normal | Left the table workspace after release |
+
+All three mounted gears remained seated in these failed fourth-gear attempts. The successful camera run retained 1,655 RGB/depth frames per camera at 20 Hz and finite six-joint arm actions. It is a four-gear partial demonstration, correctly marked `success=false`; the full five-point task was not attempted. Use `--keep_failed 3` with the main runner to retain attempts ending with at least three points in the data directory's `fail/` folder.
+
+**Faster runs with camera recordings.** Opt in to a smaller R1Pro or R1 Lite solver budget
+and run without the simulator window, keeping camera rendering enabled:
+
+```bash
+source scripts/env.sh
+ROCO_ROBOT_BUNDLE=r1_pro python scripts/rule_based_agent.py \
+  --task Template-Galaxea-Lab-External-Direct-v0 \
+  --num_envs 1 --headless --enable_cameras --fast_physics \
+  > /tmp/r1pro-recording.log 2>&1
+```
+
+For R1 Lite, use the same flag with its robot selection:
+
+```bash
+ROCO_ROBOT_BUNDLE=r1_lite python scripts/rule_based_agent.py \
+  --task Template-Galaxea-Lab-External-Direct-v0 \
+  --num_envs 1 --headless --enable_cameras --fast_physics \
+  > /tmp/r1lite-recording.log 2>&1
+```
+
+`scripts/r1lite_rulegen.sh` also accepts and forwards `--fast_physics` when
+using that script's separately configured data-generation environment.
+
+This retains all three 320×240 RGB/depth cameras, 20 Hz recording, the HDF5
+format, and the existing episode retention rules. Redirection avoids terminal
+scrolling; inspect progress with `tail -f /tmp/r1pro-recording.log`. Use a different
+log filename for each run if you want to retain previous logs. Keep Fabric enabled
+(the default). `evaluate_r1pro.py` disables recordings and is intended for policy
+evaluation rather than demonstration collection.
+
+`--fast_physics` changes only the robot's solver budget from 128 position / 128
+velocity iterations to 32 / 8. Physics remains at 100 Hz and control at 20 Hz;
+collision shapes, contact parameters, controller thresholds and camera settings
+are unchanged. Omit the flag to retain the original solver budget. New HDF5
+files store the timestep and robot solver iterations in their attributes so
+datasets collected with different physics settings can be distinguished.
+
+For **R1 Lite**, the same short seed-44 benchmark took **5.90 s instead of
+17.39 s** for 1.5 simulated seconds (about **2.9× faster**). Both runs saved
+35 frames from each RGB/depth camera at 20 Hz, including five warmup frames,
+with finite six-joint arm actions and the expected solver metadata. This checks
+runtime and recording compatibility for the earlier timed policy. Assembly
+checks for the new feedback policy are recorded separately in
+[R1 Lite assembly validation](docs/r1lite_validation.json). See the
+[R1 Lite performance report](docs/r1lite_performance.json).
+
+On the RTX A6000, a short **R1Pro** seed-44 benchmark with all three cameras and recording
+enabled took **5.06 s instead of 14.60 s** for 1.5 simulated seconds (about
+**2.9× faster**, excluding scene startup and final HDF5 serialization). Both
+configurations saved 35 RGB/depth frames per camera, including five warmup frames,
+at 20 Hz. These are throughput measurements, not whole-episode speed or success
+rates. A repeat through the integrated fast-profile helper took 4.95 s and
+verified the saved timestep/solver metadata. All 42 regression checks passed.
+Removing the window alone and reducing CPU thread counts did not produce
+a meaningful improvement in this benchmark; physics was the main cost.
+
+A lower solver budget changes numerical contact resolution, so the fast profile
+requires its own seating validation. A fresh R1Pro seed-44 run with cameras and
+recording enabled verified all four gears after retreat and parking at 99.25
+simulated seconds (333.2 wall-clock seconds, excluding startup and final file
+writing). The largest planetary XY error was 0.380 mm; the centre-gear XY error
+was 3.673 mm against the unchanged 5 mm tolerance. This single layout does not
+establish a general success rate or validate the later ring stage. Measurements
+and validation details are in [the performance report](docs/r1pro_performance.json).
+Increasing the timestep would additionally
+change contact and controller sampling and is not part of this profile. See the
+[NVIDIA performance guide](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/reference_material/sim_performance_optimization_handbook.html)
+for the distinction between viewport and sensor rendering.
+
+To compare the feedback policy with the previous timed policy on the same seed:
+
+```bash
+source scripts/env.sh
+python scripts/evaluate_r1pro.py --headless --seed 42 --policy legacy --output /tmp/r1pro-legacy-42.json
+python scripts/evaluate_r1pro.py --headless --seed 42 --output /tmp/r1pro-feedback-42.json
+python scripts/test_r1pro_planetary.py --headless
+```
+
+For Lite, select its bundle explicitly (the default remains R1Pro):
+
+```bash
+python scripts/evaluate_r1pro.py --robot r1_lite --headless --seed 43 --output /tmp/r1lite-normal-43.json
+python scripts/evaluate_r1pro.py --robot r1_lite --headless --seed 43 --fast_physics --first-four --output /tmp/r1lite-fast-43.json
+python scripts/test_r1lite_feedback.py --headless
+```
+
+Use a fresh evaluator process for each seed. JSON reports include per-gear seating,
+XY errors, completion time and any failure reason; `.jsonl` traces and `.log`
+files are written alongside them. The evaluator omits camera rendering and HDF5
+recording while retaining production physics and scoring. Add `--first-four`
+to stop after the central gear is verified, or `--full-assembly` to check
+retention through the later stages. Add `--fast_physics` to evaluate the faster
+solver budget explicitly; the JSON reports identify the selected settings.
+For example:
+
+```bash
+ROCO_ROBOT_BUNDLE=r1_pro python scripts/evaluate_r1pro.py --headless --seed 43 --first-four --output /tmp/r1pro-four-43.json
+```
+
+`--policy planetary --full-assembly` compares the old timed fourth-gear sequence
+while keeping the improved first-three controller. Use the JSON
+`first_three_success`, `first_four_success`, and `assembly_success` fields for pass/fail;
+Isaac Kit shutdown can override a process exit code.
+
+Central-stage validation in Isaac Sim 5.1 on GPU (2026-09-17):
+
+| Seed / method | First four after retreat and parking | Verified at (simulated seconds) | Central XY error (mm) | Largest planetary XY error (mm) |
+| --- | --- | --- | --- | --- |
+| 44, fresh episode | 4/4 | 102.70 | 2.498 | 0.517 |
+| 43, continuation from three seated gears | 4/4 | 98.50 | 1.968 | 0.475 |
+
+The seed-43 continuation starts from a naturally assembled checkpoint at 73.95
+seconds and includes the complete fourth-gear pickup; no object poses were
+edited. It is not an independent fresh episode. All 40 controller and geometry
+regression checks passed. The first-three placement behavior remains unchanged;
+the additional meshing control applies to the fourth gear. These targeted runs
+do not establish a guaranteed success rate or validate completion of the later
+ring/reducer sequence. GPU results, CPU diagnostic limitations, baseline results,
+poses and source hashes are saved in the
+[central-gear validation record](docs/r1pro_sun_validation.json).
+
+Earlier first-three controller validation in Isaac Sim 5.1 (2026-09-17, before the central-stage changes):
+
+| Seed | First three after retreat | Verified by (simulated seconds) | Largest XY error (mm) |
+| --- | --- | --- | --- |
+| 42, development | 3/3 | 88.90 | 0.412 |
+| 43, development | 3/3 | 73.95 | 0.439 |
+| 44, held out | 3/3 | ≤77.00 | 0.306 |
+
+Seed 42 used one automatic regrasp; its original timed-policy baseline had only
+two gears seated at 27 seconds. Seed 44 retained all three through the full run,
+but finished with an overall score of 3/5: the remaining timed assembly stages
+still needed improvement in that version. All 20 controller regression checks passed at that time. These three
+layouts are not enough to establish a guaranteed success rate across the random
+layout distribution. Poses, outcomes, conditions and source hashes are saved in
+[the validation record](docs/r1pro_validation.json).
 
 ### Re-running the R1_Lite / R1Pro URDF→USD conversion
 

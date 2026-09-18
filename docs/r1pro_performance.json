@@ -1,0 +1,473 @@
+{
+  "date": "2026-09-18",
+  "hardware": {
+    "gpu": "NVIDIA RTX A6000",
+    "cpu": "Intel Xeon Gold 6248R",
+    "isaac_sim": "5.1.0",
+    "device": "cuda:0"
+  },
+  "method": {
+    "seed": 44,
+    "environments": 1,
+    "physics_dt": 0.01,
+    "control_dt": 0.05,
+    "timed_control_steps": 30,
+    "warmup_control_steps": 5,
+    "timing": "cProfile plus wall clock; CUDA synchronized at timing boundaries. Startup and final HDF5 serialization excluded.",
+    "recording": "Production environment, three 320x240 RGB and depth cameras, 20 Hz, production HDF5 writer. Reopened files and checked shapes, changing/nonblank RGB, cadence and fast-profile metadata.",
+    "benchmark_harness": "/tmp/r1pro-perf/record_benchmark.py",
+    "integrated_fast_profile_harness": "/tmp/r1pro-perf/solver_record.py"
+  },
+  "baseline_headless_recording": {
+    "source_report": "/tmp/r1pro-perf/record-headless.json",
+    "solver_position_iterations": 128,
+    "solver_velocity_iterations": 128,
+    "partial_benchmark": true,
+    "headless": true,
+    "steps": 30,
+    "sim_seconds": 1.5,
+    "wall_seconds": 14.602367118000984,
+    "real_time_factor": 0.10272307139510851,
+    "dataset": "/tmp/r1pro-perf/fail/fail_score0_record-headless.hdf5",
+    "cameras": {
+      "head": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 56.12170929583181,
+        "rgb_changes": true,
+        "finite_depth_fraction": 0.9080338541666667
+      },
+      "left_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 44.20231413815363,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "right_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 47.55850543323676,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      }
+    },
+    "recording_hz": 20.0
+  },
+  "baseline_windowed_recording": {
+    "source_report": "/tmp/r1pro-perf/record-gui.json",
+    "solver_position_iterations": 128,
+    "solver_velocity_iterations": 128,
+    "partial_benchmark": true,
+    "headless": false,
+    "steps": 30,
+    "sim_seconds": 1.5,
+    "wall_seconds": 14.589152950095013,
+    "real_time_factor": 0.10281611311712453,
+    "dataset": "/tmp/r1pro-perf/fail/fail_score0_record-gui.hdf5",
+    "cameras": {
+      "head": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 56.20576352846956,
+        "rgb_changes": true,
+        "finite_depth_fraction": 0.9080338541666667
+      },
+      "left_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 44.157800667707086,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "right_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 47.509701197211996,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      }
+    },
+    "recording_hz": 20.0
+  },
+  "fast_recording_initial_probe": {
+    "source_report": "/tmp/r1pro-perf/record-solver32-8.json",
+    "solver_position_iterations": 32,
+    "solver_velocity_iterations": 8,
+    "partial_benchmark": true,
+    "headless": true,
+    "steps": 30,
+    "sim_seconds": 1.5,
+    "wall_seconds": 5.059812992112711,
+    "real_time_factor": 0.2964536441046765,
+    "dataset": "/tmp/r1pro-perf/fail/fail_score0_record-solver32-8.hdf5",
+    "cameras": {
+      "head": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 56.105961620524496,
+        "rgb_changes": true,
+        "finite_depth_fraction": 0.9080338541666667
+      },
+      "left_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 44.16684681442063,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "right_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 47.54795879193457,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      }
+    },
+    "recording_hz": 20.0
+  },
+  "fast_recording_integrated_helper_and_metadata": {
+    "source_report": "/tmp/r1pro-perf/record-fast-final.json",
+    "solver_position_iterations": 32,
+    "solver_velocity_iterations": 8,
+    "partial_benchmark": true,
+    "headless": true,
+    "steps": 30,
+    "sim_seconds": 1.5,
+    "wall_seconds": 4.945920774014667,
+    "real_time_factor": 0.30328023204108684,
+    "dataset": "/tmp/r1pro-perf/fail/fail_score0_record-fast-final.hdf5",
+    "cameras": {
+      "head": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 56.11395212653352,
+        "rgb_changes": true,
+        "finite_depth_fraction": 0.9080338541666667
+      },
+      "left_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 44.1841714661356,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "right_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 47.57270857715468,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      }
+    },
+    "physics_metadata": {
+      "control_dt": 0.05,
+      "physics_dt": 0.01,
+      "robot_solver_position_iterations": 32,
+      "robot_solver_velocity_iterations": 8,
+      "sim": true,
+      "success": false
+    },
+    "recording_hz": 20.0
+  },
+  "speedup_initial_probe": 2.8859499631237964,
+  "speedup_integrated_repeat": 2.9524061919309834,
+  "other_probes": {
+    "camera_free_baseline": {
+      "steps": 30,
+      "sim_seconds": 1.5,
+      "wall_seconds": 13.097592548001558,
+      "real_time_factor": 0.11452486359631575
+    },
+    "camera_free_eight_cpu_threads": {
+      "steps": 30,
+      "sim_seconds": 1.5,
+      "wall_seconds": 12.99280525604263,
+      "real_time_factor": 0.11544850942042616
+    },
+    "conclusion": "No meaningful speedup from headless alone or reducing CPU threads. Lowering the robot solver iteration budget reduced PhysX waiting time.",
+    "profile_default_physics_fetch_seconds": 11.295,
+    "profile_fast_physics_fetch_seconds": 2.123
+  },
+  "seating_validation": {
+    "method": "Fresh seed-44 episode, GPU, 32/8 solver iterations, cameras enabled and camera frames collected in a temporary evaluator; unchanged policy, physics timestep, collisions and scoring tolerances.",
+    "harness": "/tmp/r1pro-perf/solver_evaluate_cameras.py",
+    "source_report": "/tmp/r1pro-perf/four-solver32-8-camera44.json",
+    "trace": "/tmp/r1pro-perf/four-solver32-8-camera44.jsonl",
+    "centre_xy_error_mm": 3.673004233653781,
+    "largest_planetary_xy_error_mm": 0.37976077874191105,
+    "full_episode_hdf5_validated": false,
+    "recording_scope": "Production HDF5 recording validation is the separate 35-frame smoke test above. The temporary seating evaluator cached rewards without updating the scalar recording score; its diagnostic HDF5 was discarded. Pose/score JSON and seating trace use the production scorer.",
+    "result": {
+      "seed": 44,
+      "policy": "feedback",
+      "full_assembly": false,
+      "first_four_success": true,
+      "first_three_success": true,
+      "assembly_success": null,
+      "simulation_seconds": 99.25,
+      "state": "park",
+      "active_gear": 4,
+      "failure": null,
+      "verified_first_three": true,
+      "verified_fourth": true,
+      "centre_seated": true,
+      "centre_position": [
+        0.4705044627189636,
+        0.03296472877264023,
+        0.9098235964775085
+      ],
+      "centre_quaternion": [
+        0.9436712265014648,
+        0.009798124432563782,
+        -0.0012426675530150533,
+        0.33073678612709045
+      ],
+      "carrier_position": [
+        0.4702875316143036,
+        0.029383068904280663,
+        0.9013657569885254
+      ],
+      "centre_error_mm": [
+        0.21693110466003418,
+        3.5816597938537598,
+        8.457839965820312
+      ],
+      "centre_seat_error_mm": [
+        0.20965933799743652,
+        3.667015552520752,
+        -0.5417466163635254
+      ],
+      "right_ee_pose": [
+        0.4820684492588043,
+        -0.4507167637348175,
+        1.2521581649780273,
+        0.36571988463401794,
+        0.007314278278499842,
+        -0.0035582215059548616,
+        0.9306894540786743
+      ],
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "planetary_score": 3,
+      "assembly_score": 4,
+      "gear_positions": [
+        [
+          0.5195423364639282,
+          0.05167393013834953,
+          0.9112033247947693
+        ],
+        [
+          0.42633944749832153,
+          0.06067245826125145,
+          0.9113460183143616
+        ],
+        [
+          0.4652301073074341,
+          -0.024452118203043938,
+          0.9115873575210571
+        ]
+      ],
+      "gear_quaternions": [
+        [
+          0.9752205014228821,
+          0.005384201183915138,
+          0.008167791180312634,
+          -0.22101818025112152
+        ],
+        [
+          0.9313015341758728,
+          0.0018125759670510888,
+          0.00039999556611292064,
+          -0.36424440145492554
+        ],
+        [
+          0.8314206004142761,
+          0.00431485753506422,
+          -0.0018440630519762635,
+          0.5556237697601318
+        ]
+      ],
+      "mesh_phase_errors_deg": [
+        0.0,
+        12.411528587341309,
+        2.475358486175537
+      ],
+      "right_arm_joints": [
+        -1.7599745988845825,
+        -1.3584904670715332,
+        1.8639248609542847,
+        -1.6693787574768066,
+        0.32088685035705566,
+        -0.4008374810218811,
+        1.0436517000198364
+      ],
+      "pin_positions": [
+        [
+          0.46511176228523254,
+          -0.024365941062569618,
+          0.9008601903915405
+        ],
+        [
+          0.5197393894195557,
+          0.05154464766383171,
+          0.9015359282493591
+        ],
+        [
+          0.425973117351532,
+          0.06057235598564148,
+          0.9016973972320557
+        ]
+      ],
+      "pin_assignment": [
+        1,
+        2,
+        0
+      ],
+      "xy_errors_mm": [
+        0.23567737662233412,
+        0.37976077874191105,
+        0.1463968656025827
+      ],
+      "wall_seconds": 333.20042720017955,
+      "recorded_frames": 1985,
+      "solver_position_iterations": 32,
+      "solver_velocity_iterations": 8
+    }
+  },
+  "regression_checks": {
+    "passed": 42,
+    "marker": "PLANETARY_TESTS_PASSED=True",
+    "log": "/tmp/r1pro-perf/tests-final.log",
+    "syntax_check": "passed",
+    "flake8_E9_F63_F7_F82": "passed",
+    "git_diff_check": "passed"
+  },
+  "limitations": [
+    "Short throughput benchmarks do not establish a whole-episode speedup.",
+    "One fresh layout passed all four gears; this does not establish a general success rate or validate the later ring/reducer sequence.",
+    "Fast physics changes numerical contact resolution. The original 128/128 solver settings remain the default.",
+    "Only the GPU R1Pro configuration was validated for this profile."
+  ],
+  "source_sha256": {
+    "scripts/rule_based_agent.py": "1b36b3373486cb4257a06621dc5c8081bdc0ffd5b04cbec2c8a7bca743b8ae90",
+    "scripts/evaluate_r1pro.py": "ae827461b3ef16a67ff3f270fb83029b1fdea9ba44c0de421bac89995cf444c9",
+    "scripts/test_r1pro_planetary.py": "3b488fc42df71093dbe90856a7af9c99cbbc3de3ab332618dfba838877e88212",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_physics.py": "f5fd5db888fe4027defe64706a9190190401cc7ae52467262609c7b094767baf",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_planetary.py": "2d71cdb2b28eb1efba0eb3f3fb662d0aae4f183c3cbbd4f1274ee2269b3af0cb",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_sun.py": "9c0144de25e5ab6cd84156651491d12f8afab5bf16b1e2709981f2f3b92f40a3",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/galaxea_robots.py": "776c95b2f21eb1068fdf968a047488d7ac6a77aede49640749443a8f5e344654",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/tasks/direct/galaxea_lab_external/galaxea_lab_external_env.py": "4d260734bf97670cefa5fe263e3e9009af180d4cbe2840232798682ef4e803f7"
+  }
+}

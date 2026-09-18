@@ -36,7 +36,7 @@ from .galaxea_robots import (
 )
 from .galaxea_rule_policy import GalaxeaRulePolicy
 from .recovery_rule_policy import RecoveryRulePolicy
-from .r1_lite_rule_policy import R1LiteRulePolicy
+from .r1_lite_feedback_policy import R1LiteFeedbackPolicy
 from .r1_lite_recovery_rule_policy import R1LiteRecoveryRulePolicy
 from .r1_pro_rule_policy import R1ProRulePolicy, R1ProRecoveryRulePolicy
 
@@ -142,7 +142,7 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
     ),
     torso_joint_pattern="torso_joint[1-3]",
     initial_torso_pos=_torso_pos_from_cfg(GALAXEA_R1_LITE_CFG),
-    rule_policy_class=R1LiteRulePolicy,
+    rule_policy_class=R1LiteFeedbackPolicy,
     recovery_rule_policy_class=R1LiteRecoveryRulePolicy,
 )
 

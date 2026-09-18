@@ -477,6 +477,10 @@ class R1LiteRulePolicy:
             rotated_position, rotated_orientation, None,
         )
 
+    def _refine_joint_target(self, arm_entity_cfg, jacobian, joint_pos, joint_pos_des):
+        """Optional robot-specific refinement of the differential IK solution."""
+        return joint_pos_des
+
     def move_robot_to_position(self,
                             arm_entity_cfg: SceneEntityCfg,
                             gripper_entity_cfg: SceneEntityCfg,
@@ -532,6 +536,7 @@ class R1LiteRulePolicy:
         joint_pos_des = controller.compute(ee_pos_b, ee_quat_b, jacobian, joint_pos)
         if self.IK_STEP_FRACTION != 1.0:
             joint_pos_des = joint_pos + self.IK_STEP_FRACTION * (joint_pos_des - joint_pos)
+        joint_pos_des = self._refine_joint_target(arm_entity_cfg, jacobian, joint_pos, joint_pos_des)
         if self.IK_MAX_JOINT_STEP is not None:
             joint_pos_des = joint_pos + torch.clamp(
                 joint_pos_des - joint_pos, -self.IK_MAX_JOINT_STEP, self.IK_MAX_JOINT_STEP

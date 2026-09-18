@@ -18,6 +18,7 @@ DATA_DIR="${ROCO_R1LITE_DATA_DIR:-/home/pine/roco_sim/data/r1lite}"
 CONDA_SH="${CONDA_SH:-/home/pine/miniconda3/etc/profile.d/conda.sh}"
 TASK_NAME="Template-Galaxea-Lab-External-Direct-v0"
 KEEP_FAILED=0
+FAST_PHYSICS=0
 
 while (($# > 0)); do
     case "$1" in
@@ -25,14 +26,19 @@ while (($# > 0)); do
             KEEP_FAILED=1
             shift
             ;;
+        --fast_physics)
+            FAST_PHYSICS=1
+            shift
+            ;;
         -h|--help)
-            printf 'Usage: %s [--keep_failed]\n' "${BASH_SOURCE[0]}"
+            printf 'Usage: %s [--keep_failed] [--fast_physics]\n' "${BASH_SOURCE[0]}"
             printf '  --keep_failed  save failed episodes as HDF5 files (success=false)\n'
+            printf '  --fast_physics  use 32/8 robot solver iterations (default 128/128)\n'
             exit 0
             ;;
         *)
             echo "Unknown argument: $1" >&2
-            printf 'Usage: %s [--keep_failed]\n' "${BASH_SOURCE[0]}" >&2
+            printf 'Usage: %s [--keep_failed] [--fast_physics]\n' "${BASH_SOURCE[0]}" >&2
             exit 2
             ;;
     esac
@@ -165,7 +171,7 @@ log_line "Starting R1 Lite rule generation"
 log_line "repo=${REPO_ROOT}"
 log_line "data=${DATA_DIR}"
 log_line "log=${LOG_FILE}"
-log_line "embodiment=r1_lite; target=${TARGET_SUCCESS}; existing_success=${initial_success}; keep_failed=${KEEP_FAILED}; task=${TASK_NAME}"
+log_line "embodiment=r1_lite; target=${TARGET_SUCCESS}; existing_success=${initial_success}; keep_failed=${KEEP_FAILED}; fast_physics=${FAST_PHYSICS}; task=${TASK_NAME}"
 
 agent_args=(
     --task="${TASK_NAME}"
@@ -175,6 +181,9 @@ agent_args=(
 )
 if (( KEEP_FAILED == 1 )); then
     agent_args+=(--keep_failed)
+fi
+if (( FAST_PHYSICS == 1 )); then
+    agent_args+=(--fast_physics)
 fi
 log_line "command: ROCO_ROBOT_BUNDLE=r1_lite python -u scripts/rule_based_agent.py ${agent_args[*]}"
 

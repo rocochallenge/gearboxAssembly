@@ -48,7 +48,7 @@ class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
     # env
     sim_dt = 0.01
     decimation = 5
-    episode_length_s = 60.0
+    episode_length_s = getattr(ACTIVE_ROBOT_BUNDLE.rule_policy_class, "EPISODE_LENGTH_S", 60.0)
     # - spaces definition
     # per-arm joints + one finger joint per gripper (6+6+1+1 = 14 for R1/R1_Lite, 16 for R1Pro)
     action_space = 2 * ACTIVE_ROBOT_BUNDLE.num_arm_joints + 2

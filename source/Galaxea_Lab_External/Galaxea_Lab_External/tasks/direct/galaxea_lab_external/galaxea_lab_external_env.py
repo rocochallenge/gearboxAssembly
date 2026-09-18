@@ -23,7 +23,7 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import sample_uniform, euler_xyz_from_quat, quat_apply
 
 from .galaxea_lab_external_env_cfg import GalaxeaLabExternalEnvCfg
-from Galaxea_Lab_External.robots.gearbox_geometry import PLANETARY_PIN_LOCAL_POSITIONS
+from Galaxea_Lab_External.robots.gearbox_geometry import PLANETARY_PIN_LOCAL_POSITIONS, centre_gear_seat_position
 
 from pxr import Usd, Sdf, UsdPhysics, UsdGeom, Gf
 from isaaclab.sim.spawners.materials import physics_materials, physics_materials_cfg
@@ -417,11 +417,11 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         score += planetary_score
 
         # The fourth gear is the centre/sun gear.  Its centre is the current
-        # carrier origin; the centre pin itself is deliberately not scored.
+        # carrier support surface; the centre pin itself is deliberately not scored.
         centre_match = self._pose_matches(
             gear_world_positions[3],
             gear_world_quats[3],
-            planetary_carrier_pos,
+            centre_gear_seat_position(planetary_carrier_pos, planetary_carrier_quat),
             self.CENTRE_GEAR_XY_TOLERANCE,
             self.CENTRE_GEAR_Z_TOLERANCE,
         )
@@ -650,6 +650,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         print(f"--------------------------------RESET--------------------------------")
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
+        if hasattr(getattr(self, "rule_policy", None), "reset_actuator_settings"):
+            self.rule_policy.reset_actuator_settings()
         super()._reset_idx(env_ids)
 
         self.rule_policy = self.cfg.rule_policy_class(sim_utils.SimulationContext.instance(), self.scene, self.obj_dict)
@@ -995,26 +997,17 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         
 
         print(f"####################################################Post step####################################################")
-        current_pos = self.robot.data.joint_pos
+        # A feedback policy can hold an arm and close/open its gripper in the
+        # same action. Map by joint id so recordings retain those commanded
+        # targets as well as the legacy arm-only/gripper-only actions.
+        current_pos = self.robot.data.joint_pos.clone()
+        if self.env_step_joint_ids is not None:
+            current_pos[:, self.env_step_joint_ids] = self.env_step_action
         self._left_arm_action = current_pos[:, self._left_arm_joint_idx]
         self._right_arm_action = current_pos[:, self._right_arm_joint_idx]
         self._left_gripper_action = current_pos[:, self._left_gripper_dof_idx[0]]
         self._right_gripper_action = current_pos[:, self._right_gripper_dof_idx[0]]
         
-        if self.env_step_joint_ids == self._left_arm_joint_idx:
-            self._left_arm_action = self.env_step_action.clone()
-        elif self.env_step_joint_ids == self._right_arm_joint_idx:
-            self._right_arm_action = self.env_step_action.clone()
-        elif self.env_step_joint_ids == self._left_arm_joint_idx + self._right_arm_joint_idx:
-            # per-arm joint count comes from the bundle (6 for R1/R1_Lite, 7 for R1Pro)
-            n_arm = len(self._left_arm_joint_idx)
-            self._left_arm_action = self.env_step_action.clone()[:, :n_arm]
-            self._right_arm_action = self.env_step_action.clone()[:, n_arm:2 * n_arm]
-        elif self.env_step_joint_ids is not None and list(self.env_step_joint_ids[:1]) == list(self._left_gripper_dof_idx[:1]):
-            # gripper actions may cover one or two finger joints; record the first (driven) one
-            self._left_gripper_action = self.env_step_action[0][:1].clone()
-        elif self.env_step_joint_ids is not None and list(self.env_step_joint_ids[:1]) == list(self._right_gripper_dof_idx[:1]):
-            self._right_gripper_action = self.env_step_action[0][:1].clone()
         self.act = dict(left_arm_action=self._left_arm_action, right_arm_action=self._right_arm_action,
             left_gripper_action=self._left_gripper_action, right_gripper_action=self._right_gripper_action)
 
@@ -1045,6 +1038,17 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         with h5py.File(output_file, 'w') as f:
             f.attrs['sim'] = True
             f.attrs['success'] = bool(success)
+            # Record solver fidelity alongside demonstrations collected with
+            # the optional faster physics profile.
+            f.attrs['physics_dt'] = self.physics_dt
+            f.attrs['control_dt'] = self.step_dt
+            for kind in ('position', 'velocity'):
+                iterations = getattr(
+                    self.cfg.robot_cfg.spawn.articulation_props,
+                    f'solver_{kind}_iteration_count', None,
+                )
+                if iterations is not None:
+                    f.attrs[f'robot_solver_{kind}_iterations'] = iterations
             obs = f.create_group('observations')
             act = f.create_group('actions')
             num_items = len(self.data_dict['/observations/head_rgb'])

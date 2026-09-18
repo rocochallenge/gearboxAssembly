@@ -16,15 +16,21 @@ R1Pro differs from R1_Lite in three ways that matter to the rule policies:
   the tooth-meshing wiggle is done by rotating the IK target about the vertical
   TCP axis (``ROTATE_VIA_IK``) instead of nudging one joint.
 
-Everything else (mounting plan, phase timings, TCP auto-tune from finger
-geometry, per-arm DLS controllers) is inherited from the R1_Lite policies.
+The assembly policy uses feedback-controlled pickup/insertion for the first
+three gears (``R1ProPlanetaryMixin``), then uses a
+high-rim grasp and rotational meshing search for the central gear
+(``R1ProSunMixin``). The mounting plan, TCP
+calibration, per-arm DLS controllers and ring stage come from R1_Lite. Recovery
+tasks retain their separate R1_Lite recovery sequence.
 """
 
 from .r1_lite_rule_policy import R1LiteRulePolicy
 from .r1_lite_recovery_rule_policy import R1LiteRecoveryRulePolicy
+from .r1_pro_planetary import R1ProPlanetaryMixin
+from .r1_pro_sun import R1ProSunMixin
 
 
-class R1ProRulePolicy(R1LiteRulePolicy):
+class R1ProRulePolicy(R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy):
     EE_LINK_SUFFIX = "_arm_link7"
     # Finger joint 2 mimics joint 1 (URDF <mimic>, as for R1_Lite): drive joint 1 only.
     GRIPPER_JOINT_SUFFIX = "_gripper_finger_joint1"
@@ -39,10 +45,11 @@ class R1ProRulePolicy(R1LiteRulePolicy):
     GRIPPER_DOWN_QUAT_RIGHT = (0.3826834, 0.0, 0.0, 0.9238795)
     ROTATE_VIA_IK = True
     # Full DLS steps, but capped at 0.5 rad per joint per update (= the 10 rad/s
-    # actuator velocity cap over one 0.05 s control step), plus 25 % longer phases.
+    # actuator velocity cap over one 0.05 s control step), plus 25 % longer phases
+    # for the legacy stages after the three planetary gears.
     # Emulating the sim's PD lag offline: a 0.5 step fraction left ~1 cm at grasp
     # within the phase time, the clamp does not. Total timetable stays under the
-    # 60 s episode limit (45 s * 1.25).
+    # original 60 s timetable. The feedback assembly policy has a larger budget.
     IK_STEP_FRACTION = 1.0
     IK_MAX_JOINT_STEP = 0.5
     PHASE_TIME_SCALE = 1.25
