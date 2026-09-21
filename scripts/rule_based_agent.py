@@ -95,8 +95,8 @@ def main():
             # apply actions
             obs, reward, terminated, truncated, info = env.step(actions)
 
-            print(f"Terminated: {terminated}")
-            print(f"Truncated: {truncated}")
+            if bool(torch.any(terminated | truncated).item()):
+                print(f"[episode] terminated={terminated.tolist()} truncated={truncated.tolist()}")
             # env.step(actions)
             # if terminated or truncated:
             #     env.reset()
