@@ -12,6 +12,26 @@ from Galaxea_Lab_External import GALAXEA_LAB_ASSETS_DIR
 import math
 
 
+def _spawn_lite_with_collision_overrides(prim_path, cfg, translation=None, orientation=None, **kwargs):
+    """Apply the requested contact margins to Lite's instanced colliders too.
+
+    The normal USD spawner skips instance proxies. Keep the visual meshes
+    instanced, but make collision subtrees editable before applying overrides.
+    """
+    from pxr import Usd
+
+    prim = sim_utils.spawn_from_usd(prim_path, cfg, translation, orientation, **kwargs)
+    if cfg.collision_props is not None:
+        stage = prim.GetStage()
+        for path in sim_utils.find_matching_prim_paths(prim_path):
+            root = stage.GetPrimAtPath(path)
+            collision_paths = [str(p.GetPath()) for p in Usd.PrimRange(root) if p.GetName() == "collisions"]
+            for collision_path in collision_paths:
+                sim_utils.make_uninstanceable(collision_path, stage)
+            sim_utils.modify_collision_properties(path, cfg.collision_props, stage)
+    return prim
+
+
 ##
 # Configuration
 ##
@@ -265,6 +285,7 @@ GALAXEA_HAND_CAMERA_CFG = CameraCfg(
 GALAXEA_R1_LITE_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
+        func=_spawn_lite_with_collision_overrides,
         usd_path=f"{GALAXEA_LAB_ASSETS_DIR}/Robots/R1_Lite/r1_lite.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
@@ -284,7 +305,8 @@ GALAXEA_R1_LITE_CFG = ArticulationCfg(
             solver_position_iteration_count=128,
             solver_velocity_iteration_count=128,
         ),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.05, rest_offset=0.0),
+        # Millimetre-scale contacts are needed beside the already seated gears.
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={

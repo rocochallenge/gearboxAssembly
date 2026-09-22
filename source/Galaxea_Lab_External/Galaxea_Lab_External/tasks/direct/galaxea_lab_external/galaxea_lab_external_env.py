@@ -121,6 +121,9 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             '/observations/right_arm_joint_vel': [],
             '/observations/left_gripper_joint_vel': [],
             '/observations/right_gripper_joint_vel': [],
+            '/observations/torso_joint_pos': [],
+            '/observations/torso_joint_vel': [],
+            '/actions/torso_action': [],
             '/actions/left_arm_action': [],
             '/actions/right_arm_action': [],
             '/actions/left_gripper_action': [],
@@ -289,7 +292,9 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             left_arm_joint_pos=self.left_arm_joint_pos, left_arm_joint_vel=self.left_arm_joint_vel, 
             left_gripper_joint_pos=self.left_gripper_joint_pos, left_gripper_joint_vel=self.left_gripper_joint_vel,
             right_arm_joint_pos=self.right_arm_joint_pos, right_arm_joint_vel=self.right_arm_joint_vel,
-            right_gripper_joint_pos=self.right_gripper_joint_pos, right_gripper_joint_vel=self.right_gripper_joint_vel)
+            right_gripper_joint_pos=self.right_gripper_joint_pos, right_gripper_joint_vel=self.right_gripper_joint_vel,
+            torso_joint_pos=self.robot.data.joint_pos[:, self._torso_joint_idx],
+            torso_joint_vel=self.robot.data.joint_vel[:, self._torso_joint_idx])
 
         # actions = dict(left_arm_action=self.action, right_arm_action=self.action, left_gripper_action=self.action, right_gripper_action=self.action)
 
@@ -443,8 +448,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         print(f"Get rewards at {self.rule_policy.count * self.sim.get_physics_dt()} seconds")
         self.score_tensor, time_cost = self.evaluate_score()
-        # Keep the scalar form used by the single-environment HDF5 writer,
-        # while returning a proper vector reward to Isaac Lab.
+        # Keep a scalar for diagnostic output while returning a proper vector
+        # reward to Isaac Lab. Recording reads score_tensor directly.
         self.score = int(self.score_tensor[0].item()) if self.score_tensor.numel() == 1 else self.score_tensor
         print(f"score: {self.score}")
 
@@ -453,7 +458,10 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         print(f"--------------------------------Get dones at {self.rule_policy.count * self.sim.get_physics_dt()} seconds--------------------------------")
         self.score_tensor, _ = self.evaluate_score()
-        finish_task = self.score_tensor == self.SUCCESS_SCORE
+        # Feedback assembly includes release, retreat and retention checks.
+        # Crossing the score tolerance while still holding the ring is not
+        # completion. Policies without this check retain their existing gate.
+        finish_task = (self.score_tensor == self.SUCCESS_SCORE) & getattr(self.rule_policy, "assembly_complete", True)
         if self.rule_policy.count >= self.rule_policy.total_time_steps:
             finish_task = torch.ones_like(finish_task, dtype=torch.bool)
         time_out = self.episode_length_buf >= self.max_episode_length - 1
@@ -942,7 +950,10 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             # episode timeout. Failed episodes are kept only when explicitly
             # requested through --keep_failed MIN_SCORE.
             episode_score = int(self.score_tensor[reset_env_ids].max().item())
-            episode_success = bool(torch.all(self.score_tensor[reset_env_ids] == self.SUCCESS_SCORE).item())
+            episode_success = (
+                bool(torch.all(self.score_tensor[reset_env_ids] == self.SUCCESS_SCORE).item())
+                and bool(getattr(self.rule_policy, "assembly_complete", True))
+            )
             if episode_success:
                 self._write_hdf5_episode(success=True)
             elif self.cfg.keep_failed is not None and episode_score >= self.cfg.keep_failed:
@@ -965,6 +976,9 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
                 '/observations/right_arm_joint_vel': [],
                 '/observations/left_gripper_joint_vel': [],
                 '/observations/right_gripper_joint_vel': [],
+                '/observations/torso_joint_pos': [],
+                '/observations/torso_joint_vel': [],
+                '/actions/torso_action': [],
                 '/actions/left_arm_action': [],
                 '/actions/right_arm_action': [],
                 '/actions/left_gripper_action': [],
@@ -1009,7 +1023,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self._right_gripper_action = current_pos[:, self._right_gripper_dof_idx[0]]
         
         self.act = dict(left_arm_action=self._left_arm_action, right_arm_action=self._right_arm_action,
-            left_gripper_action=self._left_gripper_action, right_gripper_action=self._right_gripper_action)
+            left_gripper_action=self._left_gripper_action, right_gripper_action=self._right_gripper_action,
+            torso_action=self.robot.data.joint_pos_target[:, self._torso_joint_idx])
 
         if self.cfg.record_data and (self.rule_policy.count % self.cfg.record_freq == 0):
             self._record_data()
@@ -1071,6 +1086,12 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             act.create_dataset('right_arm_action', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
             act.create_dataset('left_gripper_action', shape=(num_items,), dtype='float32')
             act.create_dataset('right_gripper_action', shape=(num_items,), dtype='float32')
+            torso_count = len(self._torso_joint_idx)
+            obs.create_dataset('torso_joint_pos', shape=(num_items, torso_count), dtype='float32')
+            obs.create_dataset('torso_joint_vel', shape=(num_items, torso_count), dtype='float32')
+            act.create_dataset('torso_action', shape=(num_items, torso_count), dtype='float32')
+            f.attrs['torso_joint_names'] = [self.robot.joint_names[i] for i in self._torso_joint_idx]
+
 
             f.create_dataset('score', shape=(num_items,), dtype='int32')
             f.create_dataset('current_time', shape=(num_items,), dtype='float32')
@@ -1144,7 +1165,15 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.data_dict['/actions/left_gripper_action'].append(self.act['left_gripper_action'].cpu().numpy()[0].squeeze(0))
         self.data_dict['/actions/right_gripper_action'].append(self.act['right_gripper_action'].cpu().numpy()[0].squeeze(0))
 
-        self.data_dict['/score'].append(self.score)
+        # Torso targets persist after the arm-only insertion actions resume.
+        # Store the commanded target as well as the observed torso state.
+        for name in ('torso_joint_pos', 'torso_joint_vel'):
+            self.data_dict[f'/observations/{name}'].append(self.obs[name].cpu().numpy().squeeze(0).copy())
+        self.data_dict['/actions/torso_action'].append(self.act['torso_action'].cpu().numpy().squeeze(0).copy())
+
+        # Snapshot the same score used for episode validation. Reward overrides
+        # can reuse _get_dones' result without refreshing the diagnostic scalar.
+        self.data_dict['/score'].append(int(self.score_tensor.item()))
         self.data_dict['/current_time'].append(self.rule_policy.count * self.sim.get_physics_dt())
         
 

@@ -62,7 +62,9 @@ class R1ProPlanetaryMixin:
 
     def _refine_joint_target(self, arm_entity_cfg, jacobian, joint_pos, joint_pos_des):
         if not hasattr(self, "_planetary_state") or (
-            self.planetary_complete and not getattr(self, "_sun_active", False)
+            self.planetary_complete
+            and not getattr(self, "_sun_active", False)
+            and not getattr(self, "_ring_active", False)
         ):
             return joint_pos_des
         max_step = min(self.IK_MAX_JOINT_STEP, self.PLANETARY_MAX_JOINT_STEP)
@@ -381,6 +383,10 @@ class R1ProPlanetaryMixin:
     def _pickup_lift_reached(self, target, ee):
         return float((target - ee[:, :3]).norm()) < 0.005
 
+    def _planetary_insertion_yaw(self, yaw, pin):
+        """Desired gear yaw and whether it is ready to descend onto the pin."""
+        return yaw, True
+
     def _insertion_action(self, arm, gripper, ee, gear, pin, down, elapsed, dt):
         gear_id = self._planetary_gear
         state = self._planetary_state
@@ -403,6 +409,7 @@ class R1ProPlanetaryMixin:
                 yaw = torch.atan2(
                     2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2].square() + q[:, 3].square())
                 )
+                yaw, phase_aligned = self._planetary_insertion_yaw(yaw, pin)
                 level = torch.zeros_like(q)
                 level[:, 0], level[:, 3] = torch.cos(yaw / 2), torch.sin(yaw / 2)
                 correction = quat_mul(level, quat_conjugate(q))
@@ -414,13 +421,13 @@ class R1ProPlanetaryMixin:
                 speed = 0.08 if state == "transfer" else 0.015
                 xy, z, tilt = self._gear_errors(gear_id)
                 if state in ("transfer", "realign"):
-                    if self._stable(xy < 0.0015 and abs(z - clearance) < 0.004 and tilt < 0.04):
+                    if self._stable(xy < 0.0015 and abs(z - clearance) < 0.004 and tilt < 0.04 and phase_aligned):
                         self._transition("insert")
                     elif elapsed > 10.0:
                         return self._fail_planetary("could not align above the live pin")
                 else:
                     # Never release just because the insertion timer elapsed.
-                    ready = xy < 0.0015 and 0.0 <= z < 0.015 and tilt < 0.04
+                    ready = xy < 0.0015 and 0.0 <= z < 0.015 and tilt < 0.04 and phase_aligned
                     if self._stable(ready, 0.3):
                         self._release_position = ee[:, :3].clone()
                         self._release_orientation = orientation.clone()

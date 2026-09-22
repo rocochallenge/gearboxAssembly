@@ -67,8 +67,11 @@ class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
     robot_cfg: ArticulationCfg = ACTIVE_ROBOT_BUNDLE.articulation_cfg.replace(prim_path="/World/envs/env_.*/Robot")
     rule_policy_class: type = ACTIVE_ROBOT_BUNDLE.rule_policy_class
 
-    # table_cfg: AssetBaseCfg = TABLE_CFG.copy()
     table_cfg: RigidObjectCfg = TABLE_CFG.replace(prim_path="/World/envs/env_.*/Table")
+    # Zero velocity limits still allow contact position corrections to move a
+    # dynamic table. Keep the work surface fixed while every assembly part
+    # remains dynamic, so gripping one part cannot shake the mounted gears.
+    table_cfg.spawn.rigid_props.kinematic_enabled = True
 
     ring_gear_cfg: RigidObjectCfg = RING_GEAR_CFG.replace(prim_path="/World/envs/env_.*/ring_gear",
                                                                        init_state=RigidObjectCfg.InitialStateCfg(

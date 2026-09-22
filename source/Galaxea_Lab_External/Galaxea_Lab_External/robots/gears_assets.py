@@ -88,6 +88,8 @@ TABLE_CFG = RigidObjectCfg(
 #     ),
 # )
 
+# PhysX requires positive contact offsets, greater than the rest offset.
+# Zero is rejected and can leave an unexpectedly large default contact margin.
 RING_GEAR_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/ring_gear",
     spawn=sim_utils.UsdFileCfg(
@@ -105,7 +107,7 @@ RING_GEAR_CFG = RigidObjectCfg(
             max_contact_impulse=0.5,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=-0.0005),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=-0.0005),
         # physics_material=sim_utils.RigidBodyMaterialCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
@@ -131,7 +133,7 @@ SUN_PLANETARY_GEAR_CFG = RigidObjectCfg(
             max_contact_impulse=0.5,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=-0.0005),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=-0.0005),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(0.5, 0.0, 1.0),
@@ -156,7 +158,7 @@ PLANETARY_CARRIER_CFG = RigidObjectCfg(
             max_contact_impulse=0.5,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=0.0005),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0005),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(0.6, 0.4, 1.0),
@@ -193,7 +195,7 @@ PLANETARY_REDUCER_CFG = RigidObjectCfg(
             max_contact_impulse=1.0,
         ),
         scale=(0.001, 0.001, 0.001),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.0, rest_offset=-0.0005),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=-0.0005),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(0.5, 0.0, 1.0),

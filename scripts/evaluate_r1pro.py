@@ -149,7 +149,8 @@ def snapshot(env):
     )
     ee = env.robot.data.body_state_w[:, policy.right_arm_entity_cfg.body_ids[0], :7]
     gear_id = getattr(policy, "_planetary_gear", None)
-    arm_name = policy.gear_to_pin_map.get(f"sun_planetary_gear_{gear_id}", {}).get("arm", "right")
+    object_name = "ring_gear" if gear_id == 5 else f"sun_planetary_gear_{gear_id}"
+    arm_name = policy.gear_to_pin_map.get(object_name, {}).get("arm", "right")
     arm = getattr(policy, f"{arm_name}_arm_entity_cfg")
     active_ee = env.robot.data.body_state_w[:, arm.body_ids[0], :7]
     phases = []
@@ -170,6 +171,9 @@ def snapshot(env):
         "failure": getattr(policy, "planetary_failure", None),
         "verified_first_three": bool(getattr(policy, "planetary_complete", False)),
         "verified_fourth": bool(getattr(policy, "sun_complete", False)),
+        "verified_fifth": bool(getattr(policy, "assembly_complete", False)),
+        "ring_position": env.ring_gear.data.root_state_w[0, :3].tolist(),
+        "ring_quaternion": env.ring_gear.data.root_state_w[0, 3:7].tolist(),
         "centre_seated": centre_seated,
         "centre_position": gears[3][0].tolist(),
         "centre_quaternion": quats[3][0].tolist(),
@@ -280,7 +284,10 @@ with log_path.open("w") as log, trace_path.open("w") as trace, torch.inference_m
         "first_three_success": record["planetary_score"] == 3 and (
             args.policy == "legacy" or record["verified_first_three"]
         ),
-        "assembly_success": record["assembly_score"] == env.SUCCESS_SCORE if args.full_assembly else None,
+        "assembly_success": (
+            record["assembly_score"] == env.SUCCESS_SCORE
+            and (args.policy != "feedback" or record["verified_fifth"])
+        ) if args.full_assembly else None,
         **record,
     }
     args.output.write_text(json.dumps(result, indent=2) + "\n")

@@ -25,7 +25,9 @@ from Galaxea_Lab_External.robots.r1_pro_rule_policy import R1ProRulePolicy
 from Galaxea_Lab_External.robots.r1_pro_planetary import bounded_dls_step
 from Galaxea_Lab_External.robots.physics_profiles import use_fast_physics
 from Galaxea_Lab_External.robots.robot_bundles import (
-    GALAXEA_R1_PRO_BUNDLE, GALAXEA_R1_LITE_BUNDLE, GALAXEA_R1_BUNDLE,
+    GALAXEA_R1_PRO_BUNDLE,
+    GALAXEA_R1_LITE_BUNDLE,
+    GALAXEA_R1_BUNDLE,
 )
 from Galaxea_Lab_External.tasks.direct.galaxea_lab_external.galaxea_lab_external_env import GalaxeaLabExternalEnv
 
@@ -406,6 +408,17 @@ class SunControlTests(PlanetaryControlTests):
             action = p._sun_action()
             p.count += 5
         return action
+
+    def test_lower_central_approach_enters_meshing_before_release(self):
+        p = self.make_sun_policy("approach")
+        # At 25 mm above the carrier, the gear overlaps the planets' teeth
+        # while the upper-rim grasp keeps the G1Z tips above their tops.
+        p.sun_planetary_gear_4.data.root_state_w[:, 2] -= 0.015
+        p.scene["robot"].data.body_state_w[:, :, 2] -= 0.015
+        p._motion_target[:, 2] -= 0.015
+        self.advance_sun(p, 5)
+        self.assertIn(p._planetary_state, ("search", "mesh_hold"))
+        self.assertFalse(p.sun_complete)
 
     def test_blocked_sun_does_not_release_on_rotation_timer(self):
         p = self.make_sun_policy()

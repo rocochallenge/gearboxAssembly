@@ -87,8 +87,9 @@ Start a new Python process after changing robots.
 
 The simulator opens a window and runs repeated episodes. Close the window or
 press `Ctrl+C` to stop. Use `--num_envs 1` with the supplied assembly policies.
-R1 Lite's fourth-gear placement remains experimental; complete assembly and
-recovery behavior still need validation for R1Pro and R1 Lite.
+R1Pro and R1 Lite use feedback to place the three planetary gears, central gear,
+and outer ring. Both verify that all five remain seated after releasing the
+gripper and parking the arm.
 
 ### Faster runs with camera recording
 
@@ -110,6 +111,8 @@ This flag is available for R1Pro and R1 Lite.
 For the assembly task above, demonstrations are saved as **HDF5 files** containing
 RGB and depth images from three cameras, joint states, actions, scores, and
 timestamps at 20 Hz. MP4 videos are not created automatically.
+Recordings also include torso joint states and targets, so R1 Lite's torso
+movement during ring placement is captured alongside its six-joint arm actions.
 
 The default output folder is `../data`, relative to the working directory. When
 running from the repository root, this is a `data` folder beside `gearboxAssembly`.

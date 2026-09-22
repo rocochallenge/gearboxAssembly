@@ -86,7 +86,7 @@ tests/
 .isaac-lab-docker-history
 
 # Saved data
-data/*
+/data/
 log
 
 # Training model

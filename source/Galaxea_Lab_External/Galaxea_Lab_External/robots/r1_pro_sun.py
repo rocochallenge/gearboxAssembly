@@ -24,6 +24,8 @@ class R1ProSunMixin:
     SUN_SEARCH_SPEED_RAD_S = math.radians(4.0)
     # Twelve teeth: a +/-15 degree sweep covers one complete tooth pitch.
     SUN_SEARCH_SWEEP_RAD = math.radians(15.0)
+    SUN_APPROACH_HEIGHT_M = 0.040
+    SUN_GRAVITY_SEATING = False
 
     def _sun_mesh_yaw(self, current_yaw, centre):
         """Nearest tooth phase that best matches the three observed planets.
@@ -263,16 +265,25 @@ class R1ProSunMixin:
             elif elapsed > 10.0:
                 return self._fail_planetary("could not align above the carrier centre")
         elif state in ("approach", "phase_align"):
-            height, speed = 0.040, 0.008
+            height, speed = self.SUN_APPROACH_HEIGHT_M, 0.008
             phase_error = float(torch.atan2(torch.sin(desired_yaw - yaw), torch.cos(desired_yaw - yaw)).abs())
-            if self._stable(xy < 0.0015 and abs(z - height) < 0.003 and tilt < 0.04 and phase_error < 0.02):
-                self._sun_yaw_anchor = yaw.clone()
-                self._sun_search_offset = 0.0
-                self._sun_search_direction = 1
-                self._sun_phase_aligned = True
-                self._sun_depth_sample = (self.count, z)
-                self._sun_touch_started = False
-                self._transition("search")
+            if self.SUN_GRAVITY_SEATING:
+                ready = xy < 0.0008 and abs(z - height) < 0.002 and tilt < 0.02 and phase_error < 0.01
+            else:
+                ready = xy < 0.0015 and abs(z - height) < 0.003 and tilt < 0.04 and phase_error < 0.02
+            if self._stable(ready, 0.3 if self.SUN_GRAVITY_SEATING else 0.2):
+                if self.SUN_GRAVITY_SEATING:
+                    self._release_position = ee[:, :3].clone()
+                    self._release_orientation = ee[:, 3:7].clone()
+                    self._transition("release")
+                else:
+                    self._sun_yaw_anchor = yaw.clone()
+                    self._sun_search_offset = 0.0
+                    self._sun_search_direction = 1
+                    self._sun_phase_aligned = True
+                    self._sun_depth_sample = (self.count, z)
+                    self._sun_touch_started = False
+                    self._transition("search")
             elif elapsed > 8.0:
                 return self._fail_planetary("central gear approach did not converge")
         else:

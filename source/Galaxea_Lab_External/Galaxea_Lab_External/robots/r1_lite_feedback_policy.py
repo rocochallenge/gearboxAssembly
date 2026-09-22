@@ -3,7 +3,7 @@
 Reuse the verified pickup, insertion and meshing state machines, with R1 Lite
 tool geometry and grasp selection. The legacy R1LiteRulePolicy remains separate
 for comparisons and as R1Pro's base; no R1Pro frame constants are substituted.
-Central-gear placement remains experimental and can fail during meshing or release.
+The central gear and outer ring are checked again after release and parking.
 """
 
 import math
@@ -12,22 +12,30 @@ import torch
 from isaaclab.utils.math import quat_apply, quat_conjugate
 
 from .r1_lite_rule_policy import R1LiteRulePolicy
+from .r1_lite_ring import R1LiteRingMixin
 from .r1_pro_planetary import R1ProPlanetaryMixin
 from .r1_pro_sun import R1ProSunMixin
 
 
-class R1LiteFeedbackPolicy(R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy):
+class R1LiteFeedbackPolicy(R1LiteRingMixin, R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy):
     ASSEMBLY_NAME = "R1 Lite"
     IK_MAX_JOINT_STEP = 0.3
     # Six-axis Lite can retain wrist yaw across this workspace; keep that
     # constraint to limit changes in the grasp during transport.
     PLANETARY_FREE_YAW = False
-    # At the rear pin the 80 mm path puts the carried gear into the torso.
-    # This clears the 30 mm pins while keeping the gear below the chest.
-    PLANETARY_TRANSFER_CLEARANCE = 0.045
-    # Retain Lite's stock jaw ceiling for the shallow rim grasp. The 8 N
-    # Pro setting lost this grasp in Lite trials; axial preload stays bounded.
+    # Keep 5 mm above the 30 mm pins. With the fixed table, a 45 mm path
+    # catches the chest when transferring to the rear pin from the left.
+    PLANETARY_TRANSFER_CLEARANCE = 0.035
+    # Keep the hardware ceiling; bound the closing target relative to the
+    # measured jaws below instead of driving through the light gear to zero.
     SUN_GRIP_EFFORT_N = 100.0
+    SUN_JAW_SPEED_M_S = 0.008
+    SUN_MAX_JAW_TARGET_ERROR_M = 0.0004
+    # Engage the teeth while the upper-rim fingers still clear the planets.
+    # The remaining drop to the 9 mm seat is only 16 mm, avoiding a tumble
+    # from a high release. Verify seating after retreat and parking.
+    SUN_APPROACH_HEIGHT_M = 0.025
+    SUN_GRAVITY_SEATING = True
     GRIPPER_OPEN_POS = 0.05
     ROTATE_VIA_IK = True
     MOUNT_USES_IN_HAND_OFFSET = True
@@ -41,6 +49,53 @@ class R1LiteFeedbackPolicy(R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy)
     # With +90 degrees about Y, local Z lies horizontally in world X.
     GRASP_SHIFT_AXIS_LOCAL = (0.0, 0.0, 1.0)
 
+    def _planetary_command(self, arm, gripper, position, orientation, opening, dt, speed=0.08, contact=False):
+        if getattr(self, "_sun_active", False) and opening == 0.0:
+            actual = float(self.scene["robot"].data.joint_pos[0, gripper.joint_ids].mean())
+            travel = min(self.SUN_JAW_SPEED_M_S * dt, self.SUN_MAX_JAW_TARGET_ERROR_M)
+            opening = max(0.0, actual - travel)
+        return super()._planetary_command(arm, gripper, position, orientation, opening, dt, speed, contact)
+
+    def _pick_action(self, arm, gripper, ee, gear, pin, down, elapsed, dt):
+        if getattr(self, "_sun_active", False) and self._planetary_state == "close":
+            robot = self.scene["robot"]
+            gap = float(robot.data.joint_pos[0, gripper.joint_ids].mean())
+            velocity = float(robot.data.joint_vel[0, gripper.joint_ids].abs().max())
+            # The 63 mm rim stops each jaw near 30 mm. A timer alone can
+            # start lifting while the gradually closing fingers are still open.
+            if self._stable(elapsed > 0.6 and 0.020 < gap < 0.033 and velocity < 0.003, 0.3):
+                self._transition("lift")
+            elif elapsed > 6.0:
+                result = self._retry_pick(ee, "rim grasp did not close")
+                if result is not None:
+                    return result
+                return self._release_action(arm, gripper, ee, gear, pin, down, 0.0, dt)
+            return self._planetary_command(arm, gripper, self._grasp_position, down, 0.0, dt)
+        return super()._pick_action(arm, gripper, ee, gear, pin, down, elapsed, dt)
+
+    def _planetary_insertion_yaw(self, yaw, pin):
+        """Make the three planets compatible with one central-gear phase.
+
+        For equal external gears, planet yaw minus twice its bearing from
+        the centre is constant modulo the 30-degree tooth pitch. Align the
+        carried gear above its pin; the first mounted gear is the reference.
+        """
+        if self._planetary_gear == 1:
+            return yaw, True
+        first = self._held_object(1).data.root_state_w
+        centre = self.planetary_carrier.data.root_state_w[:, :3]
+        q = first[:, 3:7]
+        first_yaw = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]),
+                                1 - 2 * (q[:, 2].square() + q[:, 3].square()))
+        first_delta = first[:, :2] - centre[:, :2]
+        delta = pin[:, :2] - centre[:, :2]
+        requested = first_yaw + 2 * (
+            torch.atan2(delta[:, 1], delta[:, 0]) - torch.atan2(first_delta[:, 1], first_delta[:, 0])
+        )
+        difference = 12 * (requested - yaw)
+        error = torch.atan2(difference.sin(), difference.cos()) / 12
+        return yaw + error.clamp(-0.05, 0.05), float(error.abs()) < 0.015
+
     def _choose_grasp(self):
         """Check the narrow Lite pad sweep against nearby tabletop parts.
 
@@ -48,6 +103,8 @@ class R1LiteFeedbackPolicy(R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy)
         in the gripper frame. At the distal 13 mm, the mesh gives an 8.327 mm
         outer pad offset from jaw position and a 7.074 mm half-width in Z.
         """
+        if getattr(self, "_ring_active", False):
+            return super()._choose_grasp()
         gear_name = f"sun_planetary_gear_{self._planetary_gear}"
         gear = self.obj_dict[gear_name].data.root_state_w[0, :3].tolist()
         obstacles = []
@@ -95,6 +152,8 @@ class R1LiteFeedbackPolicy(R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy)
         return super()._pickup_height_offset()
 
     def _pickup_clearance(self):
+        if getattr(self, "_ring_active", False):
+            return super()._pickup_clearance()
         # With the Lite torso pose, 35 mm clears the loose gears while keeping
         # a far-edge, midline pickup below wrist joint4's +90 degree limit.
         return 0.035

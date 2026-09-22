@@ -19,8 +19,9 @@ R1Pro differs from R1_Lite in three ways that matter to the rule policies:
 The assembly policy uses feedback-controlled pickup/insertion for the first
 three gears (``R1ProPlanetaryMixin``), then uses a
 high-rim grasp and rotational meshing search for the central gear
-(``R1ProSunMixin``). The mounting plan, TCP
-calibration, per-arm DLS controllers and ring stage come from R1_Lite. Recovery
+(``R1ProSunMixin``), then feedback ring insertion with G1Z grasp calibration
+(``R1ProRingMixin``). The mounting plan, TCP calibration and per-arm DLS
+controllers come from R1_Lite. Recovery
 tasks retain their separate R1_Lite recovery sequence.
 """
 
@@ -28,9 +29,13 @@ from .r1_lite_rule_policy import R1LiteRulePolicy
 from .r1_lite_recovery_rule_policy import R1LiteRecoveryRulePolicy
 from .r1_pro_planetary import R1ProPlanetaryMixin
 from .r1_pro_sun import R1ProSunMixin
+from .r1_pro_ring import R1ProRingMixin
 
 
-class R1ProRulePolicy(R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy):
+class R1ProRulePolicy(R1ProRingMixin, R1ProSunMixin, R1ProPlanetaryMixin, R1LiteRulePolicy):
+    # Reach the upper meshing region before switching to the lower-effort
+    # contact search. The upper-rim grasp keeps G1Z tips above the planets.
+    SUN_APPROACH_HEIGHT_M = 0.025
     EE_LINK_SUFFIX = "_arm_link7"
     # Finger joint 2 mimics joint 1 (URDF <mimic>, as for R1_Lite): drive joint 1 only.
     GRIPPER_JOINT_SUFFIX = "_gripper_finger_joint1"
