@@ -140,6 +140,42 @@ folder.
 Files are written when an episode finishes; the terminal prints the saved path.
 Stopping in the middle of an episode does not save that unfinished episode.
 
+### Collect a fixed number of demonstrations (Linux)
+
+The batch collector runs fresh seeds until it has the requested number of
+successful, verified recordings, or reaches the attempt limit:
+
+```bash
+source scripts/env.sh
+python scripts/collect_assembly_data.py \
+  --robot r1_pro --successes 10 --seed-start 1000 --max-attempts 50 \
+  --output "$PWD/data/r1_pro_batch" --runtime-label workstation-isaacsim5.1 \
+  --fast_physics
+```
+
+Use `--robot r1_lite` and a separate output folder for R1 Lite. For multiple
+workers, give each one its own folder and a non-overlapping seed range. Cameras
+are enabled automatically. Each accepted seed folder contains `episode.hdf5`,
+episode metadata, a score trace, and a verification report. Failed attempts keep
+their logs but do not count toward the quota.
+
+Read `status.json` in the output folder for progress. Repeating the same command
+resumes the collection and skips completed attempts. To stop after the current
+episode, create an empty `STOP` file in that folder; remove it before resuming.
+The collector leaves partial files unaccepted and stops after two consecutive
+runtime or recording errors. Data under the project's `data/` folder is excluded
+from Git.
+
+For a collection organized as `data/batch/<workstation>/<robot>/seedNNNN/`,
+build a combined index after copying the worker folders to one machine:
+
+```bash
+python scripts/index_assembly_data.py data/batch --verify-hashes
+```
+
+This writes `dataset.json` and `episodes.jsonl` with relative paths to accepted
+recordings, preserving robot, seed, workstation, and simulator version.
+
 ## Other tasks
 
 ### Partial assembly and recovery
