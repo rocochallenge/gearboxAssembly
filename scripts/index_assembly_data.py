@@ -51,9 +51,22 @@ def main():
             "bytes": verification["bytes"],
             "sha256": verification["sha256"],
         })
+        runtime = directory / "runtime.json"
+        if not runtime.exists():
+            runtime = root / outcome_path.relative_to(root).parts[0] / "runtime.json"
+        if runtime.exists():
+            episodes[-1]["runtime_metadata"] = str(runtime.relative_to(root))
+            episodes[-1]["runtime_metadata_sha256"] = hashlib.sha256(runtime.read_bytes()).hexdigest()
     summary = {
         "episodes": episodes,
         "counts": {robot: sum(e["robot"] == robot for e in episodes) for robot in ("r1_pro", "r1_lite")},
+        "counts_by_workstation": {
+            host: {
+                robot: sum(e["robot"] == robot and e["workstation"] == host for e in episodes)
+                for robot in ("r1_pro", "r1_lite")
+            }
+            for host in sorted({e["workstation"] for e in episodes})
+        },
         "total_bytes": sum(e["bytes"] for e in episodes),
         "hashes_rechecked": args.verify_hashes,
         "paths_relative_to": ".",

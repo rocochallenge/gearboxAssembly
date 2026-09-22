@@ -41,6 +41,8 @@ from Galaxea_Lab_External.robots.physics_profiles import use_fast_physics
 from Galaxea_Lab_External.tasks.direct.galaxea_lab_external.galaxea_lab_external_env import GalaxeaLabExternalEnv
 from Galaxea_Lab_External.tasks.direct.galaxea_lab_external.galaxea_lab_external_env_cfg import GalaxeaLabExternalEnvCfg
 
+loaded_source_manifest = source_manifest(Path(__file__).resolve().parents[1])
+
 
 def snapshot(env):
     policy = env.rule_policy
@@ -121,7 +123,7 @@ try:
                 "hostname": socket.gethostname(),
                 "runtime_label": args.runtime_label,
                 "source_commit": args.source_commit,
-                "source_manifest": source_manifest(Path(__file__).resolve().parents[1]),
+                "source_manifest": loaded_source_manifest,
                 "python_version": platform.python_version(),
                 "torch_version": str(torch.__version__),
                 "isaac_sim_version": list(get_version()),
