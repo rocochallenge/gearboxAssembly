@@ -30,7 +30,7 @@ from isaaclab.controllers import (
     DifferentialIKControllerCfg,
 )
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.utils.math import quat_apply, quat_error_magnitude, quat_from_angle_axis, quat_mul, subtract_frame_transforms
+from isaaclab.utils.math import quat_apply, quat_from_angle_axis, quat_mul, subtract_frame_transforms
 
 import carb.input
 from carb.input import KeyboardEventType
@@ -176,13 +176,11 @@ class R1LiteRulePolicy:
 
 
         self.sim_dt = sim.get_physics_dt()
-        print(f"sim_dt: {self.sim_dt}")
         self.count = 0
 
         # Time for intital stabilization
         self.time_step_0 = 0.2 * self.PHASE_TIME_SCALE
         self.count_step_0 = int(self.time_step_0 / self.sim_dt)
-        print(f"count_step_0: {self.count_step_0}")
 
         # Times for each step
         # 1. Move the arm to the target position above the gear and keep the orientation
@@ -194,7 +192,6 @@ class R1LiteRulePolicy:
         self.time_step_1 = torch.cumsum(self.time_step_1, dim=0) + self.time_step_0
         self.count_step_1 = self.time_step_1 / self.sim_dt
         self.count_step_1 = self.count_step_1.int()
-        print(f"count_step_1: {self.count_step_1}")
 
         # Mount the gear to the planetary_carrier
         # Phase-0 (move-to-mount lift) extended from 0.5s -> 1.5s to halve EE
@@ -204,49 +201,42 @@ class R1LiteRulePolicy:
         self.time_step_2 = torch.cumsum(self.time_step_2, dim=0) + self.time_step_1[-1]
         self.count_step_2 = self.time_step_2 / self.sim_dt
         self.count_step_2 = self.count_step_2.int()
-        print(f"count_step_2: {self.count_step_2}")
 
         # Pick up the 2nd gear
         self.time_step_3 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_3 = torch.cumsum(self.time_step_3, dim=0) + self.time_step_2[-1]
         self.count_step_3 = self.time_step_3 / self.sim_dt
         self.count_step_3 = self.count_step_3.int()
-        print(f"count_step_3: {self.count_step_3}")
 
         # Mount the 2nd gear to the planetary_carrier (slow swing — see time_step_2)
         self.time_step_4 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
         self.time_step_4 = torch.cumsum(self.time_step_4, dim=0) + self.time_step_3[-1]
         self.count_step_4 = self.time_step_4 / self.sim_dt
         self.count_step_4 = self.count_step_4.int()
-        print(f"count_step_4: {self.count_step_4}")
 
         # Reset left arm
         self.time_step_5 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5], device=sim.device)
         self.time_step_5 = torch.cumsum(self.time_step_5, dim=0) + self.time_step_4[-1]
         self.count_step_5 = self.time_step_5 / self.sim_dt
         self.count_step_5 = self.count_step_5.int()
-        print(f"count_step_5: {self.count_step_5}")
 
         # Pick up the 3rd gear
         self.time_step_6 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_6 = torch.cumsum(self.time_step_6, dim=0) + self.time_step_5[-1]
         self.count_step_6 = self.time_step_6 / self.sim_dt
         self.count_step_6 = self.count_step_6.int()
-        print(f"count_step_6: {self.count_step_6}")
 
         # Mount the 3rd gear to the planetary_carrier (slow swing — see time_step_2)
         self.time_step_7 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
         self.time_step_7 = torch.cumsum(self.time_step_7, dim=0) + self.time_step_6[-1]
         self.count_step_7 = self.time_step_7 / self.sim_dt
         self.count_step_7 = self.count_step_7.int()
-        print(f"count_step_7: {self.count_step_7}")
 
         # Pick up the 4th gear
         self.time_step_8 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_8 = torch.cumsum(self.time_step_8, dim=0) + self.time_step_7[-1]
         self.count_step_8 = self.time_step_8 / self.sim_dt
         self.count_step_8 = self.count_step_8.int()
-        print(f"count_step_8: {self.count_step_8}")
 
         # Mount the 4th gear to the planetary_carrier.
         # Another rotation is performed to aid the insertion (slow swing — see time_step_2)
@@ -254,28 +244,24 @@ class R1LiteRulePolicy:
         self.time_step_9 = torch.cumsum(self.time_step_9, dim=0) + self.time_step_8[-1]
         self.count_step_9 = self.time_step_9 / self.sim_dt
         self.count_step_9 = self.count_step_9.int()
-        print(f"count_step_9: {self.count_step_9}")
 
         # Reset right arm
         self.time_step_10 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5], device=sim.device)
         self.time_step_10 = torch.cumsum(self.time_step_10, dim=0) + self.time_step_9[-1]
         self.count_step_10 = self.time_step_10 / self.sim_dt
         self.count_step_10 = self.count_step_10.int()
-        print(f"count_step_10: {self.count_step_10}")
 
         # Pick up the big ring gear
         self.time_step_11 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 0.5, 0.5, 0.5, 0.5], device=sim.device)
         self.time_step_11 = torch.cumsum(self.time_step_11, dim=0) + self.time_step_10[-1]
         self.count_step_11 = self.time_step_11 / self.sim_dt
         self.count_step_11 = self.count_step_11.int()
-        print(f"count_step_11: {self.count_step_11}")
 
         # Mount the ring on the carrier (slow swing — see time_step_2)
         self.time_step_12 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 3.0, 0.5, 0.5], device=sim.device)
         self.time_step_12 = torch.cumsum(self.time_step_12, dim=0) + self.time_step_11[-1]
         self.count_step_12 = self.time_step_12 / self.sim_dt
         self.count_step_12 = self.count_step_12.int()
-        print(f"count_step_12: {self.count_step_12}")
         
 
         # Pick up the reducer
@@ -283,14 +269,12 @@ class R1LiteRulePolicy:
         self.time_step_13 = torch.cumsum(self.time_step_13, dim=0) + self.time_step_12[-1]
         self.count_step_13 = self.time_step_13 / self.sim_dt
         self.count_step_13 = self.count_step_13.int()
-        print(f"count_step_13: {self.count_step_13}")
 
         # Mount the reducer to the gear (slow swing — see time_step_2)
         self.time_step_14 = self.PHASE_TIME_SCALE * torch.tensor([0.0, 1.5, 1.5, 0.5, 0.5], device=sim.device)
         self.time_step_14 = torch.cumsum(self.time_step_14, dim=0) + self.time_step_13[-1]
         self.count_step_14 = self.time_step_14 / self.sim_dt
         self.count_step_14 = self.count_step_14.int()
-        print(f"count_step_14: {self.count_step_14}")
 
         left_init_pos = [0.3864, 0.5237, 1.1475]
         left_init_rot = [0.0, -1.0, 0.0, 0.0]
@@ -542,32 +526,6 @@ class R1LiteRulePolicy:
                 joint_pos_des - joint_pos, -self.IK_MAX_JOINT_STEP, self.IK_MAX_JOINT_STEP
             )
 
-        # IK diagnostic: throttle to every 10 sim steps (~0.10 s at sim_dt=0.01)
-        # for finer resolution during mount phases.
-        # tgt: IK target  ee: link6 actual  g1: sun_planetary_gear_1 actual
-        # err: |tgt - ee|  (reach proxy)
-        if self.count % 10 == 0:
-            err = (target_position[0] - ee_pose_w[0, 0:3]).norm().item()
-            j_now = robot.data.joint_pos[0, arm_entity_cfg.joint_ids].cpu().tolist()
-            j_str = ",".join(f"{v:+.2f}" for v in j_now)
-            tgt = target_position[0].cpu().tolist()
-            ee = ee_pose_w[0, 0:3].cpu().tolist()
-            g1 = self.sun_planetary_gear_1.data.root_state_w[0, 0:3].cpu().tolist()
-            pc = self.planetary_carrier.data.root_state_w[0, 0:3].cpu().tolist()
-            grip_pos = robot.data.joint_pos[0, gripper_entity_cfg.joint_ids[0]].item()
-            arm_id = "L" if arm_key == "left" else "R"
-            rot_err_deg = math.degrees(
-                quat_error_magnitude(ee_pose_w[0:1, 3:7], target_orientation[0:1].expand(1, -1)).item()
-            )
-            print(
-                f"[DLS step={self.count} arm={arm_id}] "
-                f"tgt=({tgt[0]:+.2f},{tgt[1]:+.2f},{tgt[2]:+.2f}) "
-                f"ee=({ee[0]:+.2f},{ee[1]:+.2f},{ee[2]:+.2f}) rot_err={rot_err_deg:.0f}deg "
-                f"g1=({g1[0]:+.3f},{g1[1]:+.3f},{g1[2]:+.3f}) "
-                f"pc=({pc[0]:+.3f},{pc[1]:+.3f},{pc[2]:+.3f}) "
-                f"grip={grip_pos:+.3f} err={err:.3f}m j=[{j_str}]"
-            )
-
         # print(f"ee_pos_b: {ee_pos_b}, ee_quat_b: {ee_quat_b}")
         # print(f"joint_pos_des: {joint_pos_des}")
 
@@ -715,12 +673,11 @@ class R1LiteRulePolicy:
                 'pin_world_quat': pin_world_quats[:, nearest_pin_idx],
             }
 
-            print(f"[INFO] {gear_name} -> {chosen_arm} arm, pin_{nearest_pin_idx}")
-            print(f"       Gear pos: {gear_pos_env}, Pin pos: {pin_world_positions[env_idx, nearest_pin_idx]}")
-            print(f"       Distance: {min_pin_dist:.4f}m")
+            print(
+                f"[plan] {gear_name} -> {chosen_arm} arm/pin_{nearest_pin_idx} "
+                f"distance={min_pin_dist:.4f}m"
+            )
 
-
-        print(f"self.gear_to_pin_map: {self.gear_to_pin_map}")
 
         return self.gear_to_pin_map
 
@@ -1356,17 +1313,9 @@ class R1LiteRulePolicy:
                     reset_action = self.initial_pos_left.unsqueeze(0)
                     reset_joint_ids = self.left_arm_entity_cfg.joint_ids
 
-                print(f'Pick action: {pick_action}')
-                print(f'pick_joint_ids: {pick_joint_ids}')
-                print(f'Reset action: {reset_action}')
-                print(f'reset_joint_ids: {reset_joint_ids}')
-
                 # action = torch.cat([pick_action, reset_action], dim=1).unsqueeze(0)
                 action = torch.cat([pick_action, reset_action], dim=1)
                 joint_ids = pick_joint_ids + reset_joint_ids
-
-                print(f'Action: {action}')
-                print(f'joint_ids: {joint_ids}')
 
 
         # Mount the reducer to the gear

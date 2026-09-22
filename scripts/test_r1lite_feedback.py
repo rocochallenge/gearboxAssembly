@@ -386,13 +386,11 @@ class LiteFeedbackTests(unittest.TestCase):
         obs["torso_joint_pos"] = torch.tensor([[0.15, 0.0, -0.13]])
         obs["torso_joint_vel"] = torch.zeros((1, 3))
         actions["torso_action"] = torch.tensor([[0.15, 0.0, -0.10]])
-        data = {f"/observations/{name}": [] for name in obs}
-        data.update({f"/actions/{name}": [] for name in actions})
-        data.update({"/score": [], "/current_time": []})
         return SimpleNamespace(
-            obs=obs, act=actions, data_dict=data, score=0, score_tensor=torch.tensor([0]),
+            obs=obs, act=actions, score=0, score_tensor=torch.tensor([0]),
             rule_policy=SimpleNamespace(count=11100), sim=SimpleNamespace(get_physics_dt=lambda: 0.01),
             physics_dt=0.01, step_dt=0.05, _torso_joint_idx=[0, 1, 2],
+            _data_buffers=None, _data_count=0, _data_capacity=0, _data_capacity_hint=2,
             robot=SimpleNamespace(joint_names=["torso_joint1", "torso_joint2", "torso_joint3"]),
             cfg=SimpleNamespace(robot_bundle=GALAXEA_R1_LITE_BUNDLE, robot_cfg=GALAXEA_R1_LITE_CFG),
         )
@@ -432,9 +430,10 @@ class LiteFeedbackTests(unittest.TestCase):
             GalaxeaLabExternalEnv._write_hdf5_episode(env, success=True)
             with h5py.File(env.save_hdf5_file_name) as recording:
                 np.testing.assert_array_equal(recording["score"][:], expected)
-        # Recorded values must also survive the next episode's reset.
+        # The file keeps the scores after the episode buffers are released.
         env.score_tensor.zero_()
-        self.assertEqual(env.data_dict["/score"], expected)
+        self.assertIsNone(env._data_buffers)
+        self.assertEqual(env._data_count, 0)
 
     def test_transfer_ik_retains_the_yaw_constraint_for_lite(self):
         p = self.policy()

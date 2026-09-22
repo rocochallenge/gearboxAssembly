@@ -8,11 +8,8 @@ from __future__ import annotations
 import math
 import torch
 import numpy as np
-import time
 from datetime import datetime
 from itertools import permutations
-# from torchvision.utils import save_image
-from PIL import Image
 
 from collections.abc import Sequence
 import os
@@ -29,7 +26,6 @@ from pxr import Usd, Sdf, UsdPhysics, UsdGeom, Gf
 from isaaclab.sim.spawners.materials import physics_materials, physics_materials_cfg
 from isaaclab.sim.spawners.materials import spawn_rigid_body_material
 from isaaclab.managers import SceneEntityCfg
-import isaaclab.envs.mdp as mdp
 
 import isaacsim.core.utils.torch as torch_utils
 
@@ -57,8 +53,6 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
     def __init__(self, cfg: GalaxeaLabExternalEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        print(f"--------------------------------INIT--------------------------------")
-
         self._left_arm_joint_idx, _ = self.robot.find_joints(self.cfg.left_arm_joint_dof_name)
         self._right_arm_joint_idx, _ = self.robot.find_joints(self.cfg.right_arm_joint_dof_name)
         self._left_gripper_dof_idx, _ = self.robot.find_joints(self.cfg.left_gripper_dof_name)
@@ -71,16 +65,9 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         self._torso_joint_idx, _ = self.robot.find_joints(self.cfg.torso_joint_dof_name)
 
-        print(f"_torso_joint_idx: {self._torso_joint_idx}")
-
         self._torso_joint1_idx, _ = self.robot.find_joints(self.cfg.torso_joint1_dof_name)
         self._torso_joint2_idx, _ = self.robot.find_joints(self.cfg.torso_joint2_dof_name)
         self._torso_joint3_idx, _ = self.robot.find_joints(self.cfg.torso_joint3_dof_name)
-
-        print(f"_left_arm_joint_idx: {self._left_arm_joint_idx}")
-        print(f"_right_arm_joint_idx: {self._right_arm_joint_idx}")
-        print(f"_left_gripper_dof_idx: {self._left_gripper_dof_idx}")
-        print(f"_right_gripper_dof_idx: {self._right_gripper_dof_idx}")
 
         self._joint_idx = self._left_arm_joint_idx + self._right_arm_joint_idx + self._left_gripper_dof_idx + self._right_gripper_dof_idx
 
@@ -94,47 +81,27 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self.left_gripper_joint_vel = self.robot.data.joint_vel[:, self._left_gripper_dof_idx]
         self.right_gripper_joint_vel = self.robot.data.joint_vel[:, self._right_gripper_dof_idx]
         
-        print(f"left_arm_joint_pos: {self.left_arm_joint_pos}")
-        print(f"right_arm_joint_pos: {self.right_arm_joint_pos}")
-        print(f"left_gripper_joint_pos: {self.left_gripper_joint_pos}")
-        print(f"right_gripper_joint_pos: {self.right_gripper_joint_pos}")
-
-        print(f"left_arm_joint_vel: {self.left_arm_joint_vel}")
-        print(f"right_arm_joint_vel: {self.right_arm_joint_vel}")
-        print(f"left_gripper_joint_vel: {self.left_gripper_joint_vel}")
-        print(f"right_gripper_joint_vel: {self.right_gripper_joint_vel}")
-
         self.joint_pos = self.robot.data.joint_pos[:, self._joint_idx]
 
-        self.data_dict = {
-            '/observations/head_rgb': [],
-            '/observations/left_hand_rgb': [],
-            '/observations/right_hand_rgb': [],
-            '/observations/head_depth': [],
-            '/observations/left_hand_depth': [],
-            '/observations/right_hand_depth': [],
-            '/observations/left_arm_joint_pos': [],
-            '/observations/right_arm_joint_pos': [],
-            '/observations/left_gripper_joint_pos': [],
-            '/observations/right_gripper_joint_pos': [],
-            '/observations/left_arm_joint_vel': [],
-            '/observations/right_arm_joint_vel': [],
-            '/observations/left_gripper_joint_vel': [],
-            '/observations/right_gripper_joint_vel': [],
-            '/observations/torso_joint_pos': [],
-            '/observations/torso_joint_vel': [],
-            '/actions/torso_action': [],
-            '/actions/left_arm_action': [],
-            '/actions/right_arm_action': [],
-            '/actions/left_gripper_action': [],
-            '/actions/right_gripper_action': [],
-            '/score': [],
-            '/current_time': [],
-        }
+        # Capture into preallocated NumPy arrays.  The old list-of-arrays path
+        # caused h5py to build another full copy of every image stream when the
+        # episode was closed (a successful R1 Pro episode is several GB).  The
+        # arrays are allocated lazily on the first sample, so simulator startup
+        # does not pay the full episode-sized host allocation.
+        self._data_buffers: dict[str, np.ndarray] | None = None
+        self._data_count = 0
+        self._data_capacity = 0
+        physics_dt = float(self.physics_dt)
+        record_stride = math.lcm(
+            max(int(self.cfg.decimation), 1),
+            max(int(self.cfg.record_freq), 1),
+        )
+        self._data_capacity_hint = max(
+            int(math.ceil(self.cfg.episode_length_s / (physics_dt * record_stride))) + 2,
+            1,
+        )
 
     def _setup_scene(self):
-
-        print(f"--------------------------------SETUP SCENE--------------------------------")
 
         self.robot = Articulation(self.cfg.robot_cfg)
         
@@ -197,17 +164,12 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         self._initialize_scene()
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        print(f"--------------------------------PRE PHYSICS STEP at {mdp.observations.current_time_s(self).item()} seconds--------------------------------")
         # self.actions = actions.clone()
         # print(f"_pre_physics_step actions: {self.actions}")
 
         pass
 
     def _apply_action(self) -> None:
-        start_time = time.time()
-        # print(f"Time: {self.rule_policy.count * self.sim.get_physics_dt()}, Apply action")
-        current_time_s = mdp.observations.current_time_s(self)
-        print(f"Apply action: {current_time_s.item()} seconds")
         # action, joint_ids = self.rule_policy.get_action()
         action = self.env_step_action
         joint_ids = self.env_step_joint_ids
@@ -232,13 +194,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         for cam in [self.head_camera, self.left_hand_camera, self.right_hand_camera]:
             cam.update(dt=sim_dt)
 
-        end_time = time.time()
-        # print(f"Apply action time cost: {end_time - start_time} seconds")
-
     def _get_observations(self) -> dict:
-        # print(f"Time: {self.rule_policy.count * self.sim.get_physics_dt()}, Get observations")
-        current_time_s = mdp.observations.current_time_s(self)
-        print(f"--------------------------------Get observations at {current_time_s.item()} seconds--------------------------------")
         data_type = "rgb"
         # self.head_camera._update_outdated_buffers()
         # self.left_hand_camera._update_outdated_buffers()
@@ -446,17 +402,13 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         return score, time_cost
 
     def _get_rewards(self) -> torch.Tensor:
-        print(f"Get rewards at {self.rule_policy.count * self.sim.get_physics_dt()} seconds")
         self.score_tensor, time_cost = self.evaluate_score()
         # Keep a scalar for diagnostic output while returning a proper vector
         # reward to Isaac Lab. Recording reads score_tensor directly.
         self.score = int(self.score_tensor[0].item()) if self.score_tensor.numel() == 1 else self.score_tensor
-        print(f"score: {self.score}")
-
         return self.score_tensor.to(dtype=torch.float32)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        print(f"--------------------------------Get dones at {self.rule_policy.count * self.sim.get_physics_dt()} seconds--------------------------------")
         self.score_tensor, _ = self.evaluate_score()
         # Feedback assembly includes release, retreat and retention checks.
         # Crossing the score tolerance while still holding the ring is not
@@ -655,7 +607,7 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
-        print(f"--------------------------------RESET--------------------------------")
+        print("[episode] reset")
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
         if hasattr(getattr(self, "rule_policy", None), "reset_actuator_settings"):
@@ -896,10 +848,6 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         """
 
 
-        current_time_s = mdp.observations.current_time_s(self)
-        print(f"--------------------------------RL step at {current_time_s.item()} seconds--------------------------------")
-        print(f"####################################################Before step####################################################")
-
         action = action.to(self.device)
         # add action noise
         if self.cfg.action_noise_model:
@@ -913,7 +861,6 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
         is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
 
 
-        print(f"Generate action at {current_time_s.item()} seconds")
         self.env_step_action, self.env_step_joint_ids = self.rule_policy.get_action()
 
 
@@ -961,31 +908,9 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             else:
                 print(f"Skipping unsuccessful episode (score={episode_score})")
 
-            self.data_dict = {
-                '/observations/head_rgb': [],
-                '/observations/left_hand_rgb': [],
-                '/observations/right_hand_rgb': [],
-                '/observations/head_depth': [],
-                '/observations/left_hand_depth': [],
-                '/observations/right_hand_depth': [],
-                '/observations/left_arm_joint_pos': [],
-                '/observations/right_arm_joint_pos': [],
-                '/observations/left_gripper_joint_pos': [],
-                '/observations/right_gripper_joint_pos': [],
-                '/observations/left_arm_joint_vel': [],
-                '/observations/right_arm_joint_vel': [],
-                '/observations/left_gripper_joint_vel': [],
-                '/observations/right_gripper_joint_vel': [],
-                '/observations/torso_joint_pos': [],
-                '/observations/torso_joint_vel': [],
-                '/actions/torso_action': [],
-                '/actions/left_arm_action': [],
-                '/actions/right_arm_action': [],
-                '/actions/left_gripper_action': [],
-                '/actions/right_gripper_action': [],
-                '/score': [],
-                '/current_time': [],
-            }
+            self._data_buffers = None
+            self._data_count = 0
+            self._data_capacity = 0
 
             self._reset_idx(reset_env_ids)
             # if sensors are added to the scene, make sure we render to reflect changes in reset
@@ -1010,7 +935,6 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
 
         
 
-        print(f"####################################################Post step####################################################")
         # A feedback policy can hold an arm and close/open its gripper in the
         # same action. Map by joint id so recordings retain those commanded
         # targets as well as the legacy arm-only/gripper-only actions.
@@ -1050,6 +974,40 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             # visible without opening the HDF5 file.
             output_file = os.path.join(fail_dir, f"fail_score{score_value}_{data_name}")
 
+        if self._data_buffers is None:
+            # A normal episode always records at least one frame. Keep an
+            # empty-file fallback for reset-only smoke tests.
+            arm_dofs = self.cfg.robot_bundle.num_arm_joints
+            torso_dofs = len(self._torso_joint_idx)
+            arrays = {
+                '/observations/head_rgb': np.empty((0, 240, 320, 3), dtype=np.uint8),
+                '/observations/left_hand_rgb': np.empty((0, 240, 320, 3), dtype=np.uint8),
+                '/observations/right_hand_rgb': np.empty((0, 240, 320, 3), dtype=np.uint8),
+                '/observations/head_depth': np.empty((0, 240, 320), dtype=np.float32),
+                '/observations/left_hand_depth': np.empty((0, 240, 320), dtype=np.float32),
+                '/observations/right_hand_depth': np.empty((0, 240, 320), dtype=np.float32),
+                '/observations/left_arm_joint_pos': np.empty((0, arm_dofs), dtype=np.float32),
+                '/observations/right_arm_joint_pos': np.empty((0, arm_dofs), dtype=np.float32),
+                '/observations/left_gripper_joint_pos': np.empty((0,), dtype=np.float32),
+                '/observations/right_gripper_joint_pos': np.empty((0,), dtype=np.float32),
+                '/observations/left_arm_joint_vel': np.empty((0, arm_dofs), dtype=np.float32),
+                '/observations/right_arm_joint_vel': np.empty((0, arm_dofs), dtype=np.float32),
+                '/observations/left_gripper_joint_vel': np.empty((0,), dtype=np.float32),
+                '/observations/right_gripper_joint_vel': np.empty((0,), dtype=np.float32),
+                '/observations/torso_joint_pos': np.empty((0, torso_dofs), dtype=np.float32),
+                '/observations/torso_joint_vel': np.empty((0, torso_dofs), dtype=np.float32),
+                '/actions/torso_action': np.empty((0, torso_dofs), dtype=np.float32),
+                '/actions/left_arm_action': np.empty((0, arm_dofs), dtype=np.float32),
+                '/actions/right_arm_action': np.empty((0, arm_dofs), dtype=np.float32),
+                '/actions/left_gripper_action': np.empty((0,), dtype=np.float32),
+                '/actions/right_gripper_action': np.empty((0,), dtype=np.float32),
+                '/score': np.empty((0,), dtype=np.int32),
+                '/current_time': np.empty((0,), dtype=np.float32),
+            }
+        else:
+            num_items = self._data_count
+            arrays = {name: values[:num_items] for name, values in self._data_buffers.items()}
+
         with h5py.File(output_file, 'w') as f:
             f.attrs['sim'] = True
             f.attrs['success'] = bool(success)
@@ -1057,6 +1015,8 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             # the optional faster physics profile.
             f.attrs['physics_dt'] = self.physics_dt
             f.attrs['control_dt'] = self.step_dt
+            f.attrs['num_frames'] = int(next(iter(arrays.values())).shape[0])
+            f.attrs['torso_joint_names'] = [self.robot.joint_names[i] for i in self._torso_joint_idx]
             for kind in ('position', 'velocity'):
                 iterations = getattr(
                     self.cfg.robot_cfg.spawn.articulation_props,
@@ -1064,40 +1024,19 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
                 )
                 if iterations is not None:
                     f.attrs[f'robot_solver_{kind}_iterations'] = iterations
-            obs = f.create_group('observations')
-            act = f.create_group('actions')
-            num_items = len(self.data_dict['/observations/head_rgb'])
-            obs.create_dataset('head_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-            obs.create_dataset('left_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-            obs.create_dataset('right_hand_rgb', shape=(num_items, 240, 320, 3), dtype='uint8')
-            obs.create_dataset('head_depth', shape=(num_items, 240, 320), dtype='float32')
-            obs.create_dataset('left_hand_depth', shape=(num_items, 240, 320), dtype='float32')
-            obs.create_dataset('right_hand_depth', shape=(num_items, 240, 320), dtype='float32')
-            # per-arm joint count comes from the active robot bundle (6 for R1/R1_Lite, 7 for R1Pro)
-            obs.create_dataset('left_arm_joint_pos', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-            obs.create_dataset('right_arm_joint_pos', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-            obs.create_dataset('left_gripper_joint_pos', shape=(num_items,), dtype='float32')
-            obs.create_dataset('right_gripper_joint_pos', shape=(num_items,), dtype='float32')
-            obs.create_dataset('left_arm_joint_vel', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-            obs.create_dataset('right_arm_joint_vel', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-            obs.create_dataset('left_gripper_joint_vel', shape=(num_items,), dtype='float32')
-            obs.create_dataset('right_gripper_joint_vel', shape=(num_items,), dtype='float32')
-            act.create_dataset('left_arm_action', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-            act.create_dataset('right_arm_action', shape=(num_items, self.cfg.robot_bundle.num_arm_joints), dtype='float32')
-            act.create_dataset('left_gripper_action', shape=(num_items,), dtype='float32')
-            act.create_dataset('right_gripper_action', shape=(num_items,), dtype='float32')
-            torso_count = len(self._torso_joint_idx)
-            obs.create_dataset('torso_joint_pos', shape=(num_items, torso_count), dtype='float32')
-            obs.create_dataset('torso_joint_vel', shape=(num_items, torso_count), dtype='float32')
-            act.create_dataset('torso_action', shape=(num_items, torso_count), dtype='float32')
-            f.attrs['torso_joint_names'] = [self.robot.joint_names[i] for i in self._torso_joint_idx]
+            f.create_group('observations')
+            f.create_group('actions')
+            # Buffers are contiguous NumPy arrays. Passing them directly to
+            # h5py avoids the old list-to-array conversion and a second full
+            # image-sized temporary allocation. Compression is intentionally
+            # disabled: raw contiguous writes are fastest for this dataset.
+            for name, value in arrays.items():
+                f.create_dataset(name, data=value)
 
-
-            f.create_dataset('score', shape=(num_items,), dtype='int32')
-            f.create_dataset('current_time', shape=(num_items,), dtype='float32')
-
-            for name, value in self.data_dict.items():
-                f[name][...] = value
+        # Release episode-sized host buffers before the next reset.
+        self._data_buffers = None
+        self._data_count = 0
+        self._data_capacity = 0
         # Emit the terminal marker only after the file has been closed. The
         # rule-generation shell script follows this marker and reports exactly
         # once per fully completed episode.
@@ -1132,55 +1071,60 @@ class GalaxeaLabExternalEnv(DirectRLEnv):
             - right_gripper_action     (1,) 'float32'
         """
 
-        # print(f"Type and shape of data_dict:")
-        # for key, value in self.data_dict.items():
-        #     print(f"{key}: {type(value)}")
-        #     if isinstance(value, np.ndarray):
-        #         print(f"Shape: {value.shape}")
-        #         print(f"Type: {value.dtype}")
-        # print("Begin to record data")
+        def sample(tensor, *, depth=False, scalar=False):
+            value = tensor.detach().cpu().numpy()
+            if value.ndim > 0 and value.shape[0] == 1:
+                value = value[0]
+            if depth and value.ndim > 0 and value.shape[-1] == 1:
+                value = value[..., 0]
+            if scalar:
+                return np.asarray(value).reshape(-1)[0]
+            return np.asarray(value)
 
-        print("*******Write data into memory*******")
-        start_time = time.time()
+        samples = {
+            '/observations/head_rgb': sample(self.obs['head_rgb']),
+            '/observations/left_hand_rgb': sample(self.obs['left_hand_rgb']),
+            '/observations/right_hand_rgb': sample(self.obs['right_hand_rgb']),
+            '/observations/head_depth': sample(self.obs['head_depth'], depth=True),
+            '/observations/left_hand_depth': sample(self.obs['left_hand_depth'], depth=True),
+            '/observations/right_hand_depth': sample(self.obs['right_hand_depth'], depth=True),
+            '/observations/left_arm_joint_pos': sample(self.obs['left_arm_joint_pos']),
+            '/observations/right_arm_joint_pos': sample(self.obs['right_arm_joint_pos']),
+            '/observations/left_gripper_joint_pos': sample(self.obs['left_gripper_joint_pos'], scalar=True),
+            '/observations/right_gripper_joint_pos': sample(self.obs['right_gripper_joint_pos'], scalar=True),
+            '/observations/left_arm_joint_vel': sample(self.obs['left_arm_joint_vel']),
+            '/observations/right_arm_joint_vel': sample(self.obs['right_arm_joint_vel']),
+            '/observations/left_gripper_joint_vel': sample(self.obs['left_gripper_joint_vel'], scalar=True),
+            '/observations/right_gripper_joint_vel': sample(self.obs['right_gripper_joint_vel'], scalar=True),
+            '/observations/torso_joint_pos': sample(self.obs['torso_joint_pos']),
+            '/observations/torso_joint_vel': sample(self.obs['torso_joint_vel']),
+            '/actions/torso_action': sample(self.act['torso_action']),
+            '/actions/left_arm_action': sample(self.act['left_arm_action']),
+            '/actions/right_arm_action': sample(self.act['right_arm_action']),
+            '/actions/left_gripper_action': sample(self.act['left_gripper_action'], scalar=True),
+            '/actions/right_gripper_action': sample(self.act['right_gripper_action'], scalar=True),
+            '/score': np.int32(self.score_tensor.item()),
+            '/current_time': np.float32(self.rule_policy.count * self.sim.get_physics_dt()),
+        }
 
-        self.data_dict['/observations/head_rgb'].append(self.obs['head_rgb'].cpu().numpy().squeeze(0))
-        self.data_dict['/observations/left_hand_rgb'].append(self.obs['left_hand_rgb'].cpu().numpy().squeeze(0))
-        self.data_dict['/observations/right_hand_rgb'].append(self.obs['right_hand_rgb'].cpu().numpy().squeeze(0))
-        self.data_dict['/observations/head_depth'].append(self.obs['head_depth'].cpu().numpy().squeeze(0).squeeze(-1))
-        self.data_dict['/observations/left_hand_depth'].append(self.obs['left_hand_depth'].cpu().numpy().squeeze(0).squeeze(-1))   
-        self.data_dict['/observations/right_hand_depth'].append(self.obs['right_hand_depth'].cpu().numpy().squeeze(0).squeeze(-1))
-        
-        self.data_dict['/observations/left_arm_joint_pos'].append(self.obs['left_arm_joint_pos'].cpu().numpy().squeeze(0))
-        self.data_dict['/observations/right_arm_joint_pos'].append(self.obs['right_arm_joint_pos'].cpu().numpy().squeeze(0))
-        self.data_dict['/observations/left_gripper_joint_pos'].append(self.obs['left_gripper_joint_pos'].cpu().numpy()[0].squeeze(0))
-        self.data_dict['/observations/right_gripper_joint_pos'].append(self.obs['right_gripper_joint_pos'].cpu().numpy()[0].squeeze(0))
-        
-        self.data_dict['/observations/left_arm_joint_vel'].append(self.obs['left_arm_joint_vel'].cpu().numpy().squeeze(0))
-        self.data_dict['/observations/right_arm_joint_vel'].append(self.obs['right_arm_joint_vel'].cpu().numpy().squeeze(0))
-        self.data_dict['/observations/left_gripper_joint_vel'].append(self.obs['left_gripper_joint_vel'].cpu().numpy()[0].squeeze(0))
-        self.data_dict['/observations/right_gripper_joint_vel'].append(self.obs['right_gripper_joint_vel'].cpu().numpy()[0].squeeze(0))
-        
-        self.data_dict['/actions/left_arm_action'].append(self.act['left_arm_action'].cpu().numpy().squeeze(0))
-        self.data_dict['/actions/right_arm_action'].append(self.act['right_arm_action'].cpu().numpy().squeeze(0))
-        self.data_dict['/actions/left_gripper_action'].append(self.act['left_gripper_action'].cpu().numpy()[0].squeeze(0))
-        self.data_dict['/actions/right_gripper_action'].append(self.act['right_gripper_action'].cpu().numpy()[0].squeeze(0))
+        if self._data_buffers is None:
+            capacity = self._data_capacity_hint
+            self._data_buffers = {
+                name: np.empty((capacity,) + np.asarray(value).shape, dtype=np.asarray(value).dtype)
+                for name, value in samples.items()
+            }
+            self._data_capacity = capacity
+        elif self._data_count >= self._data_capacity:
+            # Defensive growth for unusual episode lengths or recording rates.
+            new_capacity = max(self._data_capacity * 2, self._data_count + 1)
+            grown = {}
+            for name, value in self._data_buffers.items():
+                grown[name] = np.empty((new_capacity,) + value.shape[1:], dtype=value.dtype)
+                grown[name][:self._data_count] = value[:self._data_count]
+            self._data_buffers = grown
+            self._data_capacity = new_capacity
 
-        # Torso targets persist after the arm-only insertion actions resume.
-        # Store the commanded target as well as the observed torso state.
-        for name in ('torso_joint_pos', 'torso_joint_vel'):
-            self.data_dict[f'/observations/{name}'].append(self.obs[name].cpu().numpy().squeeze(0).copy())
-        self.data_dict['/actions/torso_action'].append(self.act['torso_action'].cpu().numpy().squeeze(0).copy())
-
-        # Snapshot the same score used for episode validation. Reward overrides
-        # can reuse _get_dones' result without refreshing the diagnostic scalar.
-        self.data_dict['/score'].append(int(self.score_tensor.item()))
-        self.data_dict['/current_time'].append(self.rule_policy.count * self.sim.get_physics_dt())
-        
-
-        # print(f"Saved data at {self.rule_policy.count * self.sim.get_physics_dt()} seconds")
-        # current_time_s = mdp.observations.current_time_s(self)
-        # print(f"Saved data at {current_time_s.item()} seconds")
-            
-        end_time = time.time()
-        # print(f"Record data time cost: {end_time - start_time} seconds")
+        for name, value in samples.items():
+            self._data_buffers[name][self._data_count] = value
+        self._data_count += 1
             
