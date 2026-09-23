@@ -215,6 +215,12 @@ class R1ProSunMixin:
             self.scene["robot"].write_joint_effort_limit_to_sim(limits, joint_ids=ids)
             self._sun_saved_grip_effort = None
 
+    def _sun_target_transform(self, ee, gear, level):
+        """Wrist target for the requested gear orientation."""
+        correction = quat_mul(level, quat_conjugate(gear[:, 3:7]))
+        orientation = quat_mul(correction, ee[:, 3:7])
+        return orientation, quat_apply(correction, ee[:, :3] - gear[:, :3])
+
     def _sun_insert(self, arm, gripper, ee, gear, centre, down, elapsed, dt):
         state = self._planetary_state
         if float((ee[:, :3] - gear[:, :3] - self._tcp_offset(arm)).norm()) > 0.08:
@@ -253,9 +259,7 @@ class R1ProSunMixin:
             desired_yaw = yaw + yaw_error.clamp(-0.04, 0.04)
         level = torch.zeros_like(q)
         level[:, 0], level[:, 3] = torch.cos(desired_yaw / 2), torch.sin(desired_yaw / 2)
-        correction = quat_mul(level, quat_conjugate(q))
-        orientation = quat_mul(correction, ee[:, 3:7])
-        offset = quat_apply(correction, ee[:, :3] - gear[:, :3])
+        orientation, offset = self._sun_target_transform(ee, gear, level)
 
         if state in ("transfer", "realign"):
             height = 0.080 if state == "transfer" else 0.055

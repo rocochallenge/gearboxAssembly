@@ -15,6 +15,7 @@ from isaaclab.utils.math import quat_apply, quat_conjugate, quat_mul
 
 class GearboxRingMixin:
     RING_TIMEOUT_S = 65.0
+    RING_TRANSFER_TIMEOUT_S = 10.0
     RING_RETRACT_TORSO = True
     RING_TRANSFER_HEIGHT = 0.050
     RING_PRELOAD_M = 0.001
@@ -186,7 +187,7 @@ class GearboxRingMixin:
             height, speed = self.RING_TRANSFER_HEIGHT, 0.040 if state == "transfer" else 0.015
             if self._stable(xy < 0.002 and abs(z - height) < 0.004 and tilt < 0.04):
                 self._transition("approach")
-            elif elapsed > 10.0:
+            elif elapsed > self.RING_TRANSFER_TIMEOUT_S:
                 return self._fail_planetary("ring transfer did not converge")
         elif state == "approach":
             height, speed = 0.038, 0.006

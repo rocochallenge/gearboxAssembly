@@ -75,6 +75,83 @@ class ProRingTests(unittest.TestCase):
         self.assertGreater(tip_height, 0.02745 + 0.002)
         self.assertLess(tip_height, 0.04745 - 0.010)
 
+    def lift_fixture(self):
+        p = self.policy()
+        p._ring_active = True
+        p._planetary_state = "lift"
+        p._planetary_gear = 5
+        p._pick_attempt = 1
+        p._pick_height = 0.909
+        p._grasp_position = torch.tensor([[0.439, -0.273, 1.212]])
+        p._stable_since = 100
+        p.scene = {"robot": SimpleNamespace(data=SimpleNamespace(
+            joint_pos=torch.tensor([[0.0, 0.0, 0.0, -1.998, 0.0, 0.0, 0.0]]),
+            joint_pos_limits=torch.tensor([[[-2.0, 2.0]] * 7]),
+        ))}
+        arm = SimpleNamespace(joint_ids=list(range(7)))
+        ee = torch.tensor([[0.454, -0.273, 1.258, 1.0, 0.0, 0.0, 0.0]])
+        ring = torch.tensor([[0.475, -0.295, 0.951, 1.0, 0.0, 0.0, 0.0]])
+        return p, arm, ee, ring
+
+    def test_ring_lift_escapes_folding_limit_without_relaxing_lift_gate(self):
+        p, arm, ee, ring = self.lift_fixture()
+        grasp = p._grasp_position.clone()
+        target = p._pickup_lift_target(arm, ee, ring, 1.1)
+        torch.testing.assert_close(target, grasp + torch.tensor([[0.030, 0.0, 0.050]]))
+        torch.testing.assert_close(p._grasp_position, grasp)
+        self.assertIsNone(p._stable_since)
+        self.assertFalse(p._pickup_lift_reached(target, ee))
+        # Reaching the unchanged 5 mm gate still requires physical tracking.
+        ee[:, :3] = target
+        self.assertTrue(p._pickup_lift_reached(target, ee))
+
+    def test_ring_forward_waypoint_latches_without_accumulating(self):
+        p, arm, ee, ring = self.lift_fixture()
+        first = p._pickup_lift_target(arm, ee, ring, 1.1)
+        p.scene["robot"].data.joint_pos[:, 3] = -1.90
+        ee[:, :3] = first
+        for _ in range(5):
+            torch.testing.assert_close(p._pickup_lift_target(arm, ee, ring, 2.0), first)
+
+    def test_ring_forward_lift_requires_clear_payload_and_folding_limit(self):
+        for case in ("early", "low_payload", "tracking", "elbow_clear", "other_joint_limit"):
+            with self.subTest(case=case):
+                p, arm, ee, ring = self.lift_fixture()
+                elapsed = 1.1
+                if case == "early": elapsed = 0.5
+                elif case == "low_payload": ring[:, 2] = p._pick_height + 0.020
+                elif case == "tracking": ee[:, :3] = p._grasp_position + torch.tensor([[0.0, 0.0, 0.05]])
+                else:
+                    p.scene["robot"].data.joint_pos[:, 3] = -1.90
+                    if case == "other_joint_limit": p.scene["robot"].data.joint_pos[:, 6] = 1.999
+                torch.testing.assert_close(p._pickup_lift_target(arm, ee, ring, elapsed), p._grasp_position + torch.tensor([[0.0, 0.0, 0.05]]))
+
+    def test_retry_discards_the_previous_ring_lift_waypoint(self):
+        p, arm, ee, ring = self.lift_fixture()
+        p._pickup_lift_target(arm, ee, ring, 1.1)
+        p._pick_attempt = 2
+        target = p._pickup_lift_target(arm, ee, ring, 0.0)
+        torch.testing.assert_close(target, p._grasp_position + torch.tensor([[0.0, 0.0, 0.05]]))
+
+    def test_ring_lift_change_leaves_planet_and_sun_targets_unchanged(self):
+        for gear_id in (1, 4):
+            with self.subTest(gear_id=gear_id):
+                p, arm, ee, ring = self.lift_fixture()
+                p._ring_active = False
+                p._sun_active = gear_id == 4
+                p._planetary_gear = gear_id
+                torch.testing.assert_close(p._pickup_lift_target(arm, ee, ring, 1.1), p._grasp_position + torch.tensor([[0.0, 0.0, 0.05]]))
+
+    def test_new_ring_stage_discards_a_stale_forward_waypoint(self):
+        from Galaxea_Lab_External.robots.gearbox_ring import GearboxRingMixin
+        p = self.policy()
+        p._ring_forward_lift_token = (5, 1)
+        p._ring_forward_lift_offset = 0.030
+        with patch.object(GearboxRingMixin, "_start_ring", return_value=None):
+            p._start_ring()
+        self.assertIsNone(p._ring_forward_lift_token)
+        self.assertEqual(p._ring_forward_lift_offset, 0.0)
+
     def test_ring_ik_keeps_seven_joint_commands_bounded(self):
         p = self.policy()
         p._ring_active = True
@@ -108,12 +185,64 @@ class ProRingTests(unittest.TestCase):
         offset = p._tcp_offset(None)
         ee = torch.cat((ring[:, :3] + offset, orientation), dim=-1)
         p._ring_insert(None, None, ee, ring, ring[:, :3], 0.0, 0.05)
+        p._planetary_state = "search"
         # Contact holds the ring level while the wrist pitches about its grasp.
         # Recomputing the grasp from this deflection would retain the new tilt.
         tilt = torch.tensor([[0.9950042, 0.0, 0.0998334, 0.0]])
         ee = torch.cat((ring[:, :3] + quat_apply(tilt, offset), quat_mul(tilt, orientation)), dim=-1)
-        p._ring_insert(None, None, ee, ring, ring[:, :3], 1.0, 0.05)
-        torch.testing.assert_close(commands[-1][3], orientation, atol=1e-6, rtol=0)
+        target, _ = p._ring_target_transform(ee, ring, orientation)
+        torch.testing.assert_close(target, orientation, atol=1e-6, rtol=0)
+
+    def test_ring_uses_the_settled_transport_grasp_before_freezing_for_contact(self):
+        p = self.policy()
+        p._planetary_state = "transfer"
+        ring = torch.tensor([[0.45, 0.0, 0.96, 1.0, 0.0, 0.0, 0.0]])
+        ee = torch.tensor([[0.45, 0.0, 1.26, 1.0, 0.0, 0.0, 0.0]])
+        level = ring[:, 3:7]
+        p._ring_target_transform(ee, ring, level)
+        # The boss settles between the pads while travelling above the gears.
+        settled = torch.tensor([[0.9996875, 0.0, 0.0249974, 0.0]])
+        ee[:, 3:7] = settled
+        p._planetary_state = "approach"
+        target, _ = p._ring_target_transform(ee, ring, level)
+        torch.testing.assert_close(target, settled)
+        p._planetary_state = "search"
+        ee[:, 3:7] = level
+        target, _ = p._ring_target_transform(ee, ring, level)
+        torch.testing.assert_close(target, settled)
+
+    def test_long_ring_transfer_has_time_to_settle_but_still_times_out(self):
+        p = self.policy()
+        p._planetary_state = "transfer"
+        p._ring_torso_retracted = True
+        p._stable_since = None
+        p.sim_dt = 0.01
+        p._gear_errors = lambda gear_id: (0.0015, 0.050, 0.001)
+        p._tcp_offset = lambda arm: torch.tensor([[0.0, 0.0, 0.3]])
+        p._planetary_command = lambda *args, **kwargs: None
+        p._transition = lambda state: setattr(p, "_planetary_state", state)
+        failures = []
+        p._fail_planetary = failures.append
+        ring = torch.tensor([[0.45, 0.0, 0.96, 1.0, 0.0, 0.0, 0.0]])
+        ee = ring.clone()
+        ee[:, 2] += 0.3
+        centre = torch.tensor([[0.45, 0.0, 0.91]])
+
+        # A 380 mm transfer at 40 mm/s leaves almost no settling time
+        # under the former 10 s deadline. Still require the full dwell.
+        p.count = 1010
+        p._ring_insert(None, None, ee, ring, centre, 10.1, 0.05)
+        self.assertEqual(failures, [])
+        self.assertEqual(p._planetary_state, "transfer")
+        p.count = 1035
+        p._ring_insert(None, None, ee, ring, centre, 10.35, 0.05)
+        self.assertEqual(p._planetary_state, "approach")
+
+        p._planetary_state = "transfer"
+        p._gear_errors = lambda gear_id: (0.010, 0.050, 0.001)
+        p.count = 1510
+        p._ring_insert(None, None, ee, ring, centre, 15.1, 0.05)
+        self.assertEqual(failures, ["ring transfer did not converge"])
 
     def test_small_seated_settling_does_not_lift_the_ring_again(self):
         for xy, should_release in ((0.0016, True), (0.0021, False)):

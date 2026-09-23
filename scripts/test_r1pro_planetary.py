@@ -19,6 +19,7 @@ app = AppLauncher(args).app
 
 import torch
 import numpy as np
+from isaaclab.utils.math import quat_apply
 from pxr import Usd, UsdGeom
 from Galaxea_Lab_External import GALAXEA_LAB_ASSETS_DIR
 from Galaxea_Lab_External.robots.r1_pro_rule_policy import R1ProRulePolicy
@@ -30,6 +31,12 @@ from Galaxea_Lab_External.robots.robot_bundles import (
     GALAXEA_R1_BUNDLE,
 )
 from Galaxea_Lab_External.tasks.direct.galaxea_lab_external.galaxea_lab_external_env import GalaxeaLabExternalEnv
+
+
+class SceneStub(dict):
+    """Mapping-shaped scene fixture with the one environment used in production."""
+
+    num_envs = 1
 
 
 class PlanetaryControlTests(unittest.TestCase):
@@ -76,6 +83,151 @@ class PlanetaryControlTests(unittest.TestCase):
         self.assertAlmostEqual(float(result[0, 0]), 0.0, places=5)
         self.assertGreater(float(result[0, 1]), 0.099)
 
+    def make_phase_alignment_policy(self, gear_id=2):
+        """Place a carried planet at the unloaded transfer waypoint.
+
+        The first planet lies on the carrier's +X bearing with zero yaw.  The
+        second pin is five degrees around the carrier, so equal external gears
+        require ten degrees of phase advance modulo the 30-degree tooth pitch.
+        """
+        p = self.make_policy("transfer")
+        p._planetary_gear = gear_id
+        p._pick_attempt = 1
+        radius = 0.05
+        p.gear_to_pin_map["sun_planetary_gear_1"]["pin_local_pos"] = torch.tensor([radius, 0.0, 0.0])
+        angle = torch.tensor(5.0 * torch.pi / 180.0)
+        p.gear_to_pin_map["sun_planetary_gear_2"]["pin_local_pos"] = torch.tensor(
+            [radius * angle.cos(), radius * angle.sin(), 0.0]
+        )
+        first = p._held_object(1).data.root_state_w
+        first[:, :3] = p._live_pin(1)
+        first[:, 3:7] = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        carried = p._held_object(gear_id).data.root_state_w
+        carried[:, :3] = p._live_pin(gear_id)
+        carried[:, 2] += p.PLANETARY_TRANSFER_CLEARANCE
+        carried[:, 3:7] = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        return p
+
+    def test_planet_phase_is_not_constrained_during_free_space_transfer(self):
+        p = self.make_phase_alignment_policy()
+        gear = p._held_object(2).data.root_state_w
+        gear[:, 0] += 0.010
+        yaw = torch.tensor([0.0])
+        requested, ready = p._planetary_insertion_yaw(yaw, p._live_pin(2))
+        torch.testing.assert_close(requested, yaw)
+        self.assertFalse(ready)
+        self.assertTrue(p._use_free_planetary_yaw())
+        self.assertIsNone(getattr(p, "_planetary_phase_token", None))
+
+    def test_planet_phase_gate_rejects_low_tilted_or_nontransfer_payloads(self):
+        for case in ("below_clearance", "tilted", "nontransfer"):
+            with self.subTest(case=case):
+                p = self.make_phase_alignment_policy()
+                gear = p._held_object(2).data.root_state_w
+                if case == "below_clearance":
+                    gear[:, 2] -= 0.005
+                elif case == "tilted":
+                    angle = torch.tensor(0.05 / 2)
+                    gear[:, 3:7] = torch.tensor([[angle.cos(), angle.sin(), 0.0, 0.0]])
+                else:
+                    p._planetary_state = "realign"
+
+                yaw = torch.tensor([0.123])
+                requested, ready = p._planetary_insertion_yaw(yaw, p._live_pin(2))
+                torch.testing.assert_close(requested, yaw)
+                self.assertFalse(ready)
+                self.assertIsNone(getattr(p, "_planetary_phase_token", None))
+                self.assertTrue(p._use_free_planetary_yaw())
+
+    def test_planet_phase_latches_only_at_the_unloaded_pin_waypoint(self):
+        p = self.make_phase_alignment_policy()
+        requested, ready = p._planetary_insertion_yaw(torch.tensor([0.0]), p._live_pin(2))
+        # Ten degrees are required; one control update is bounded to 0.05 rad.
+        torch.testing.assert_close(requested, torch.tensor([0.05]))
+        self.assertFalse(ready)
+        self.assertEqual(p._planetary_phase_token, (2, 1))
+        self.assertFalse(p._use_free_planetary_yaw())
+
+        # Once latched, fixed-yaw authority remains through insertion rather
+        # than disappearing when the payload leaves the transfer waypoint.
+        p._planetary_state = "insert"
+        p._held_object(2).data.root_state_w[:, 2] -= 0.060
+        self.assertFalse(p._use_free_planetary_yaw())
+        requested, ready = p._planetary_insertion_yaw(torch.tensor([0.170]), p._live_pin(2))
+        self.assertTrue(ready)
+        self.assertAlmostEqual(float(requested[0]), 10.0 * torch.pi / 180.0, places=5)
+
+    def test_new_pick_attempt_restores_free_yaw_until_phase_is_reacquired(self):
+        p = self.make_phase_alignment_policy()
+        p._planetary_insertion_yaw(torch.tensor([0.0]), p._live_pin(2))
+        self.assertFalse(p._use_free_planetary_yaw())
+
+        p._pick_attempt = 2
+        p._planetary_state = "transfer"
+        self.assertTrue(p._use_free_planetary_yaw())
+        p._held_object(2).data.root_state_w[:, 0] += 0.010
+        p._planetary_insertion_yaw(torch.tensor([0.0]), p._live_pin(2))
+        self.assertEqual(p._planetary_phase_token, (2, 1))
+        self.assertTrue(p._use_free_planetary_yaw())
+
+        p._held_object(2).data.root_state_w[:, 0] -= 0.010
+        p._planetary_insertion_yaw(torch.tensor([0.0]), p._live_pin(2))
+        self.assertEqual(p._planetary_phase_token, (2, 2))
+        self.assertFalse(p._use_free_planetary_yaw())
+
+    def test_phase_constraint_does_not_change_gear_one_sun_or_ring_yaw(self):
+        p = self.make_phase_alignment_policy(gear_id=1)
+        p._planetary_phase_token = (2, 1)
+        yaw = torch.tensor([0.123])
+        requested, ready = p._planetary_insertion_yaw(yaw, p._live_pin(1))
+        torch.testing.assert_close(requested, yaw)
+        self.assertTrue(ready)
+        self.assertTrue(p._use_free_planetary_yaw())
+
+        for gear_id, active in ((4, "_sun_active"), (5, "_ring_active")):
+            with self.subTest(gear_id=gear_id):
+                p._planetary_gear = gear_id
+                setattr(p, active, True)
+                self.assertTrue(p._use_free_planetary_yaw())
+                setattr(p, active, False)
+
+    def test_starting_a_new_planetary_sequence_clears_the_phase_gate(self):
+        p = self.make_phase_alignment_policy()
+        p._planetary_phase_token = (2, 1)
+        p._assign_planetary_pins = lambda: None
+        p._start_planetary()
+        self.assertIsNone(p._planetary_phase_token)
+        self.assertTrue(p._use_free_planetary_yaw())
+
+    def test_blocked_planetary_gear_does_not_make_the_wrist_target_keep_descending(self):
+        p = self.make_policy("transfer")
+        gear = p._held_object(1).data.root_state_w
+        pin = p._live_pin(1)
+        ee = p.scene["robot"].data.body_state_w[:, 0, :7]
+        requests = []
+        p._planetary_command = lambda arm, gripper, target, *args: requests.append(target.clone())
+
+        def command(height, gap):
+            gear[:, 2] = pin[:, 2] + height
+            ee[:, :3] = gear[:, :3] + p._tcp_offset(None)
+            ee[:, 2] = gear[:, 2] + gap
+            p._insertion_action(p.left_arm_entity_cfg, p.left_gripper_entity_cfg,
+                                ee, gear, pin, ee[:, 3:7], 0.0, 0.05)
+
+        command(0.080, 0.280)
+        p._planetary_state = "insert"
+        command(0.030, 0.280)
+        first_target = requests[-1]
+        command(0.030, 0.270)
+        torch.testing.assert_close(requests[-1], first_target)
+
+        # A lift above the peg unloads contact and permits recalibration.
+        p._planetary_state = "realign"
+        command(0.055, 0.270)
+        self.assertAlmostEqual(float(requests[-1][0, 2] - pin[0, 2]), 0.315, places=5)
+        command(0.040, 0.260)
+        self.assertAlmostEqual(float(requests[-1][0, 2] - pin[0, 2]), 0.315, places=5)
+
     def make_policy(self, state="insert"):
         p = R1ProRulePolicy.__new__(R1ProRulePolicy)
         p.device = "cpu"
@@ -109,7 +261,7 @@ class PlanetaryControlTests(unittest.TestCase):
             setattr(p, f"sun_planetary_gear_{gear_id}", SimpleNamespace(data=SimpleNamespace(root_state_w=root)))
         ee = p.sun_planetary_gear_1.data.root_state_w[:, :7].clone()
         ee[:, :3] += p._tcp_offset(None)
-        p.scene = {
+        p.scene = SceneStub({
             "robot": SimpleNamespace(
                 data=SimpleNamespace(
                     body_state_w=ee.unsqueeze(1),
@@ -118,7 +270,7 @@ class PlanetaryControlTests(unittest.TestCase):
                     root_state_w=torch.tensor([[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0] + [0.0] * 6]),
                 )
             )
-        }
+        })
         robot = p.scene["robot"]
 
         def write_effort_limits(limits, joint_ids):
@@ -135,6 +287,99 @@ class PlanetaryControlTests(unittest.TestCase):
             action = p._planetary_action()
             p.count += 5
         return action
+
+    def make_arm_limited_retreat(self, lift=0.100, lateral=0.006):
+        # Seed 25004: the pad cleared the gear by 100 mm, but wrist limits
+        # left a 6 mm lateral residual against the old 5 mm pose gate.
+        p = self.make_policy("retreat")
+        robot = p.scene["robot"]
+        ee = robot.data.body_state_w[:, 0, :7]
+        p._release_position = ee[:, :3].clone()
+        p._release_orientation = ee[:, 3:7].clone()
+        ee[:, 0] += lateral
+        ee[:, 2] += lift
+        robot.data.joint_pos_limits = torch.tensor([[[-2.0, 2.0]] * 8])
+        robot.data.joint_pos[:, 6] = 1.998
+        p._state_started = p.count - 300
+        return p
+
+    def test_clear_arm_limited_retreat_reaches_post_release_verification(self):
+        for lift, lateral in ((0.100, 0.006), (0.086, 0.011)):
+            with self.subTest(lift=lift, lateral=lateral):
+                p = self.make_arm_limited_retreat(lift, lateral)
+                self.advance(p, 1)
+                self.assertEqual(p._planetary_state, "verify")
+                self.assertFalse(p.planetary_complete)
+                self.advance(p, 10)
+                self.assertEqual(p._planetary_state, "park")
+
+    def test_arm_limit_cannot_excuse_incomplete_or_displaced_retreat(self):
+        for lift, lateral, seated in ((0.05, 0.006, True), (0.10, 0.015, True), (0.10, 0.006, False)):
+            with self.subTest(lift=lift, lateral=lateral, seated=seated):
+                p = self.make_arm_limited_retreat(lift, lateral)
+                if not seated:
+                    p.sun_planetary_gear_1.data.root_state_w[:, 0] += 0.004
+                self.advance(p, 1)
+                self.assertEqual(p._planetary_state, "retreat")
+                self.assertFalse(p.planetary_complete)
+
+    def test_seated_planet_is_verified_instead_of_regrasped_after_slip(self):
+        p = self.make_policy("retry_pick")
+        ee = p.scene["robot"].data.body_state_w[:, 0, :7]
+        p._retreat_position = ee[:, :3] + torch.tensor([[0.0, 0.0, 0.10]])
+        self.advance(p, 1)
+        self.assertEqual(p._planetary_state, "release")
+        torch.testing.assert_close(p._release_position, ee[:, :3])
+        self.assertFalse(p.planetary_complete)
+
+    def test_unseated_planet_still_uses_pick_retry(self):
+        p = self.make_policy("retry_pick")
+        ee = p.scene["robot"].data.body_state_w[:, 0, :7]
+        p._retreat_position = ee[:, :3] + torch.tensor([[0.0, 0.0, 0.10]])
+        p.sun_planetary_gear_1.data.root_state_w[:, 0] += 0.004
+        self.advance(p, 1)
+        self.assertEqual(p._planetary_state, "retry_pick")
+        self.assertFalse(p.planetary_complete)
+
+    def test_planetary_jaw_opening_waits_for_the_fully_open_pad_envelope(self):
+        for roll in (0.0, 0.17):
+            with self.subTest(roll=roll):
+                p = self.make_policy("release")
+                p._planetary_gear = 3
+                robot = p.scene["robot"]
+                ee = robot.data.body_state_w[:, 0, :7]
+                angle = torch.tensor(roll / 2)
+                ee[:, 3:7] = torch.tensor([[angle.cos(), angle.sin(), 0.0, 0.0]])
+                tip = torch.tensor([[-0.0295, -0.087647, -0.27155]])
+                # Closed pads can clear while the outward sweep of tilted
+                # fingers would still strike a mounted planetary gear.
+                ee[:, 2] = 0.934 - quat_apply(ee[:, 3:7], tip)[0, 2] + 0.001
+                p._release_position = ee[:, :3].clone()
+                p._release_orientation = ee[:, 3:7].clone()
+                robot.data.joint_pos[:, 7] = 0.030
+                action, _ = self.advance(p, 1)
+                self.assertAlmostEqual(float(action[0, 7]), 0.033, places=5)
+                robot.data.joint_pos[:, 7] = 0.033
+                action, _ = self.advance(p, 1)
+                self.assertAlmostEqual(float(action[0, 7]), 0.033, places=5)
+
+                p._planetary_state = "retreat"
+                ee[:, 2] += 0.05
+                action, _ = self.advance(p, 1)
+                self.assertAlmostEqual(float(action[0, 7]), p.GRIPPER_OPEN_POS, places=5)
+
+    def test_first_two_planets_keep_full_release_opening(self):
+        for gear_id in (1, 2):
+            with self.subTest(gear_id=gear_id):
+                p = self.make_policy("release")
+                p._planetary_gear = gear_id
+                robot = p.scene["robot"]
+                ee = robot.data.body_state_w[:, 0, :7]
+                p._release_position = ee[:, :3].clone()
+                p._release_orientation = ee[:, 3:7].clone()
+                robot.data.joint_pos[:, 7] = 0.030
+                action, _ = self.advance(p, 1)
+                self.assertAlmostEqual(float(action[0, 7]), p.GRIPPER_OPEN_POS, places=5)
 
     def test_shifted_pin_does_not_trigger_timed_release(self):
         p = self.make_policy()
@@ -160,7 +405,8 @@ class PlanetaryControlTests(unittest.TestCase):
         self.assertEqual(p._planetary_state, "insert")
         action, _ = self.advance(p, 5)
         self.assertEqual(p._planetary_state, "release")
-        self.assertAlmostEqual(float(action[0, -1]), p.GRIPPER_OPEN_POS)
+        self.assertGreater(float(action[0, -1]), 0.0)
+        self.assertLessEqual(float(action[0, -1]), p.GRIPPER_OPEN_POS)
 
     def test_tilted_or_high_gear_does_not_release(self):
         for high in (False, True):
@@ -197,7 +443,7 @@ class PlanetaryControlTests(unittest.TestCase):
         p = self.make_policy("lift")
         p._pick_height = 0.90
         p._grasp_position = p.scene["robot"].data.body_state_w[:, 0, :3].clone()
-        p._grasp_position[:, 2] -= 0.10
+        p._grasp_position[:, 2] -= p._pickup_clearance()
         p._state_started = p.count - 205
         self.advance(p, 1)
         self.assertEqual(p._planetary_state, "retry_pick")
@@ -252,6 +498,75 @@ class PlanetaryControlTests(unittest.TestCase):
         self.assertAlmostEqual(p._planetary_opening, 0.055)
         self.assertAlmostEqual(p._grasp_shift, -0.008)
 
+    def make_pin_calibration_policy(self):
+        p = self.make_policy()
+        p.pin_local_positions = [
+            p.gear_to_pin_map[f"sun_planetary_gear_{i}"]["pin_local_pos"] for i in range(1, 4)
+        ]
+        p.right_arm_entity_cfg = SimpleNamespace(body_ids=[1])
+        p.scene["robot"].data.body_state_w = torch.tensor(
+            [[[0.48, 0.45, 1.25, 1.0, 0.0, 0.0, 0.0], [0.48, -0.45, 1.25, 1.0, 0.0, 0.0, 0.0]]]
+        )
+        p.gear_to_pin_map["sun_planetary_gear_3"]["arm"] = "right"
+        for i, pos in enumerate(
+            ((0.582, 0.0855, 0.901), (0.6485, 0.0236, 0.901), (0.6485, -0.0989, 0.901)), 1
+        ):
+            p._held_object(i).data.root_state_w[:, :3] = torch.tensor([pos])
+        return p
+
+    def assert_mesh_axis_mapping(self, p):
+        mesh_axes = torch.tensor(
+            [
+                [-0.0000000058710575, -0.0539999945163727, 0.0],
+                [0.0467653796672821, 0.0270000021457672, 0.0],
+                [-0.0467653832435608, 0.0269999965429306, 0.0],
+            ]
+        )
+        carrier = p.planetary_carrier.data.root_state_w[:, :7]
+        for gear_id in (1, 2, 3):
+            mapping = p.gear_to_pin_map[f"sun_planetary_gear_{gear_id}"]
+            expected_local = mesh_axes[mapping["pin"]]
+            expected_world = carrier[:, :3] + quat_apply(carrier[:, 3:7], expected_local.unsqueeze(0))
+            torch.testing.assert_close(mapping["pin_local_pos"], expected_local, atol=1e-8, rtol=0)
+            torch.testing.assert_close(mapping["pin_world_pos"], expected_world, atol=1e-7, rtol=0)
+
+    def test_pro_assignment_uses_measured_mesh_axes(self):
+        p = self.make_pin_calibration_policy()
+        p._assign_planetary_pins()
+        self.assert_mesh_axis_mapping(p)
+
+    def test_pro_mesh_axes_follow_carrier_rotation_and_translation(self):
+        p = self.make_pin_calibration_policy()
+        angle = torch.tensor(torch.pi / 4)
+        p.planetary_carrier.data.root_state_w[:, :3] = torch.tensor([[0.411, -0.027, 0.913]])
+        p.planetary_carrier.data.root_state_w[:, 3:7] = torch.tensor(
+            [[angle.cos(), 0.0, 0.0, angle.sin()]]
+        )
+        p._assign_planetary_pins()
+        self.assert_mesh_axis_mapping(p)
+
+    def test_pin_calibration_preserves_sun_ring_and_scorer_constants(self):
+        p = self.make_pin_calibration_policy()
+        before = (
+            p.SUN_APPROACH_HEIGHT_M,
+            p.RING_TRANSFER_TIMEOUT_S,
+            p.RING_HOLD_XY_TOLERANCE,
+            GalaxeaLabExternalEnv.PLANETARY_GEAR_XY_TOLERANCE,
+            GalaxeaLabExternalEnv.CENTRE_GEAR_XY_TOLERANCE,
+            GalaxeaLabExternalEnv.RING_GEAR_XY_TOLERANCE,
+        )
+        self.assertEqual(before[:4], (0.040, 15.0, 0.002, 0.002))
+        p._assign_planetary_pins()
+        after = (
+            p.SUN_APPROACH_HEIGHT_M,
+            p.RING_TRANSFER_TIMEOUT_S,
+            p.RING_HOLD_XY_TOLERANCE,
+            GalaxeaLabExternalEnv.PLANETARY_GEAR_XY_TOLERANCE,
+            GalaxeaLabExternalEnv.CENTRE_GEAR_XY_TOLERANCE,
+            GalaxeaLabExternalEnv.RING_GEAR_XY_TOLERANCE,
+        )
+        self.assertEqual(after, before)
+
     def test_pin_assignment_reserves_the_near_side_for_each_arm(self):
         p = self.make_policy()
         p.pin_local_positions = [p.gear_to_pin_map[f"sun_planetary_gear_{i}"]["pin_local_pos"] for i in range(1, 4)]
@@ -277,7 +592,7 @@ class PlanetaryControlTests(unittest.TestCase):
         p = self.make_policy("hover")
         p._grasp_shift = -0.008
         p._motion_target = p._held_object(1).data.root_state_w[:, :3] + p._tcp_offset(None)
-        p._motion_target[:, 2] += 0.10
+        p._motion_target[:, 2] += p._pickup_clearance()
         original = p._motion_target.clone()
         self.advance(p, 2)
         self.assertLess(float(p._motion_target[0, 0]), float(original[0, 0]) - 0.007)
@@ -409,13 +724,144 @@ class SunControlTests(PlanetaryControlTests):
             p.count += 5
         return action
 
-    def test_lower_central_approach_enters_meshing_before_release(self):
+    def test_sun_contact_slip_does_not_ratchet_the_wrist_target(self):
+        p = self.make_sun_policy("transfer")
+        ee = p.scene["robot"].data.body_state_w[:, 0, :7]
+        gear = p.sun_planetary_gear_4.data.root_state_w
+        level = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        orientation, _ = p._sun_target_transform(ee, gear, level)
+        p._planetary_state = "search"
+        # Contact rolls the wrist while the gear stays blocked by the teeth.
+        # The correction must restore the pre-contact grasp, not adopt the slip.
+        ee[:, 3:7] = torch.tensor([[0.99875, 0.049979, 0.0, 0.0]])
+        corrected, offset = p._sun_target_transform(ee, gear, level)
+        torch.testing.assert_close(corrected, orientation)
+        self.assertTrue(bool(torch.isfinite(offset).all()))
+        # A subsequent pickup establishes a new grasp before contact.
+        p._planetary_state = "transfer"
+        refreshed, _ = p._sun_target_transform(ee, gear, level)
+        torch.testing.assert_close(refreshed, ee[:, 3:7])
+
+    def test_sun_yaw_slip_keeps_correction_toward_the_requested_phase(self):
+        for state in ("search", "approach", "phase_align"):
+            with self.subTest(state=state):
+                p = self.make_sun_policy("transfer")
+                ee = p.scene["robot"].data.body_state_w[:, 0, :7]
+                gear = p.sun_planetary_gear_4.data.root_state_w
+                ee[:, 3:7] = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+                gear[:, 3:7] = ee[:, 3:7]
+                p._sun_target_transform(ee, gear, ee[:, 3:7].clone())
+                p._planetary_state = state
+                # Teeth turn the payload inside the shallow grasp. The
+                # requested correction remains clockwise after unloading.
+                angle = torch.tensor(0.35)
+                gear[:, 3:7] = torch.tensor([[angle.div(2).cos(), 0.0, 0.0, angle.div(2).sin()]])
+                requested = angle - 0.04
+                level = torch.tensor([[requested.div(2).cos(), 0.0, 0.0, requested.div(2).sin()]])
+                orientation, _ = p._sun_target_transform(ee, gear, level)
+                wrist_yaw = 2 * torch.atan2(orientation[0, 3], orientation[0, 0])
+                self.assertLess(float(wrist_yaw), 0.0)
+                self.assertAlmostEqual(float(wrist_yaw), -0.04, places=5)
+
+    def test_sun_grasp_is_remeasured_once_after_unloading_each_retry(self):
+        p = self.make_sun_policy("transfer")
+        ee = p.scene["robot"].data.body_state_w[:, 0, :7]
+        gear = p.sun_planetary_gear_4.data.root_state_w
+        level = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        original, _ = p._sun_target_transform(ee, gear, level)
+        p._planetary_state = "realign"
+        ee[:, 3:7] = torch.tensor([[0.9998, 0.0199987, 0.0, 0.0]])
+        gear[:, 2] = p._live_pin(4)[:, 2] + 0.049
+        target, _ = p._sun_target_transform(ee, gear, level)
+        torch.testing.assert_close(target, original)
+
+        gear[:, 2] += 0.003
+        refreshed, _ = p._sun_target_transform(ee, gear, level)
+        torch.testing.assert_close(refreshed, ee[:, 3:7])
+        ee[:, 3:7] = torch.tensor([[0.9992, 0.0399893, 0.0, 0.0]])
+        for state in ("realign", "approach", "search"):
+            p._planetary_state = state
+            target, _ = p._sun_target_transform(ee, gear, level)
+            torch.testing.assert_close(target, refreshed)
+
+        p._planetary_state = "realign"
+        p._insert_attempt += 1
+        p._state_started += 1
+        target, _ = p._sun_target_transform(ee, gear, level)
+        torch.testing.assert_close(target, ee[:, 3:7])
+
+    def test_seated_sun_can_verify_after_an_arm_limited_clear_retreat(self):
+        p = self.make_sun_policy("retreat")
+        gear = p.sun_planetary_gear_4.data.root_state_w
+        gear[:, :3] = p._live_pin(4)
+        gear[:, 2] += 0.009
+        robot = p.scene["robot"]
+        ee = robot.data.body_state_w[:, 0, :7]
+        p._release_position = ee[:, :3].clone()
+        p._release_orientation = ee[:, 3:7].clone()
+        ee[:, 0] += 0.009
+        ee[:, 2] += 0.100
+        robot.data.joint_pos_limits = torch.tensor([[[-2.0, 2.0]] * 8])
+        robot.data.joint_pos[:, 6] = 1.998
+        p._state_started = p.count - 300
+        self.advance_sun(p, 1)
+        self.assertEqual(p._planetary_state, "verify")
+        self.assertFalse(p.sun_complete)
+
+    def make_sun_retreat_with_lateral_residual(self):
+        p = self.make_sun_policy("retreat")
+        p.sun_planetary_gear_4.data.root_state_w[:, :3] = p._live_pin(4)
+        p.sun_planetary_gear_4.data.root_state_w[:, 2] += 0.009
+        robot = p.scene["robot"]
+        ee = robot.data.body_state_w[:, 0, :7]
+        p._release_position = ee[:, :3].clone()
+        p._release_orientation = ee[:, 3:7].clone()
+        ee[:, 0] += 0.016
+        ee[:, 2] += 0.100
+        robot.data.joint_pos_limits = torch.tensor([[[-2.0, 2.0]] * 8])
+        robot.data.joint_pos[:, 6] = 1.998
+        p._state_started = p.count - 300
+        return p
+
+    def test_sun_retreat_uses_measured_finger_clearance_at_a_joint_limit(self):
+        # Fresh Blackwell seed 25001 lifted 100 mm, with 112 mm finger
+        # clearance, but a saturated wrist left 16 mm lateral error.
+        p = self.make_sun_retreat_with_lateral_residual()
+        self.advance_sun(p, 1)
+        self.assertEqual(p._planetary_state, "verify")
+        self.assertFalse(p.sun_complete)
+        self.advance_sun(p, 10)
+        self.assertEqual(p._planetary_state, "park")
+
+    def test_sun_clearance_gate_requires_clearance_lift_limit_and_retained_seats(self):
+        for case in ("low_clearance", "short_lift", "large_lateral", "not_limited", "unseated", "too_early"):
+            with self.subTest(case=case):
+                p = self.make_sun_retreat_with_lateral_residual()
+                robot = p.scene["robot"]
+                ee = robot.data.body_state_w[:, 0, :7]
+                if case == "low_clearance":
+                    # Preserve 100 mm relative lift while the absolute pad
+                    # envelope is only 15 mm above the mounted gears.
+                    ee[:, 2] -= 0.110
+                    p._release_position[:, 2] -= 0.110
+                elif case == "short_lift":
+                    p._release_position[:, 2] += 0.020
+                elif case == "large_lateral":
+                    ee[:, 0] += 0.015
+                elif case == "not_limited":
+                    robot.data.joint_pos[:, 6] = 1.9
+                elif case == "unseated":
+                    p.sun_planetary_gear_2.data.root_state_w[:, 0] += 0.004
+                else:
+                    p._state_started = p.count - 200
+                self.advance_sun(p, 1)
+                self.assertEqual(p._planetary_state, "retreat")
+                self.assertFalse(p.sun_complete)
+
+    def test_central_approach_enters_search_above_the_planetary_teeth(self):
         p = self.make_sun_policy("approach")
-        # At 25 mm above the carrier, the gear overlaps the planets' teeth
-        # while the upper-rim grasp keeps the G1Z tips above their tops.
-        p.sun_planetary_gear_4.data.root_state_w[:, 2] -= 0.015
-        p.scene["robot"].data.body_state_w[:, :, 2] -= 0.015
-        p._motion_target[:, 2] -= 0.015
+        # The 40 mm waypoint is above the teeth: subsequent descent must
+        # use the bounded contact controller before tooth engagement.
         self.advance_sun(p, 5)
         self.assertIn(p._planetary_state, ("search", "mesh_hold"))
         self.assertFalse(p.sun_complete)
@@ -435,6 +881,39 @@ class SunControlTests(PlanetaryControlTests):
         self.assertEqual(float(p._position_bias[0, 2]), 0.0)
         ee = p.scene["robot"].data.body_state_w[:, 0, :3]
         self.assertGreaterEqual(float(p._motion_target[0, 2] - ee[0, 2]), -p.SUN_PRELOAD_M - 1e-6)
+
+    def test_sun_preload_does_not_follow_a_wrist_sliding_down_a_blocked_gear(self):
+        p = self.make_sun_policy()
+        p._sun_touch_started = True
+        ee = p.scene["robot"].data.body_state_w[:, 0, :7]
+        contact_z = float(ee[0, 2])
+        for _ in range(6):
+            target = ee[:, :3].clone()
+            target[:, 2] -= p.SUN_PRELOAD_M
+            p._planetary_command(
+                p.left_arm_entity_cfg, p.left_gripper_entity_cfg,
+                target, ee[:, 3:7], 0.0, 0.05, contact=True,
+            )
+            # Contact deflects the wrist while the teeth keep the gear blocked.
+            ee[:, 2] -= 0.002
+        self.assertGreaterEqual(float(p._motion_target[0, 2]), contact_z - p.SUN_PRELOAD_M - 1e-6)
+
+        # Unloading for realignment must allow the next contact at a new height.
+        p._planetary_state = "realign"
+        ee[:, 2] += 0.05
+        p._planetary_command(
+            p.left_arm_entity_cfg, p.left_gripper_entity_cfg,
+            ee[:, :3].clone(), ee[:, 3:7], 0.0, 0.05,
+        )
+        p._motion_target = ee[:, :3].clone()
+        p._planetary_state = "search"
+        target = ee[:, :3].clone()
+        target[:, 2] -= p.SUN_PRELOAD_M
+        p._planetary_command(
+            p.left_arm_entity_cfg, p.left_gripper_entity_cfg,
+            target, ee[:, 3:7], 0.0, 0.05, contact=True,
+        )
+        torch.testing.assert_close(p._motion_target, target)
 
     def test_rotation_starts_when_descent_stalls_at_the_teeth(self):
         p = self.make_sun_policy()

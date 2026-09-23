@@ -60,6 +60,9 @@ class R1ProPlanetaryMixin:
     PLANETARY_FREE_YAW = True
     PLANETARY_TRANSFER_CLEARANCE = 0.08
 
+    def _use_free_planetary_yaw(self):
+        return self.PLANETARY_FREE_YAW
+
     def _refine_joint_target(self, arm_entity_cfg, jacobian, joint_pos, joint_pos_des):
         if not hasattr(self, "_planetary_state") or (
             self.planetary_complete
@@ -70,16 +73,16 @@ class R1ProPlanetaryMixin:
         max_step = min(self.IK_MAX_JOINT_STEP, self.PLANETARY_MAX_JOINT_STEP)
         limits = self.scene["robot"].data.joint_pos_limits[:, arm_entity_cfg.joint_ids]
         lower, upper = limits[..., 0] + 0.002, limits[..., 1] - 0.002
-        free_yaw = self.PLANETARY_FREE_YAW and self._planetary_state in ("transfer", "insert", "realign")
+        free_yaw = self._use_free_planetary_yaw() and self._planetary_state in ("transfer", "insert", "realign")
         if not free_yaw and bool(((joint_pos_des >= lower) & (joint_pos_des <= upper)).all()):
             return joint_pos + (joint_pos_des - joint_pos).clamp(-max_step, max_step)
         lower_step = (lower - joint_pos).clamp(-max_step, max_step)
         upper_step = (upper - joint_pos).clamp(-max_step, max_step)
         task_step = (jacobian @ (joint_pos_des - joint_pos).unsqueeze(-1)).squeeze(-1)
         if free_yaw:
-            # A round bore requires position and an upright axis, not a fixed
-            # yaw. Remove only world-Z angular velocity from the IK task. The
-            # remaining five constraints still level and centre the gear.
+            # Free tool yaw during travel can avoid the redundant arm's limits.
+            # An adapter may restore it for tooth-phase alignment above a pin.
+            # The remaining five constraints still level and centre the gear.
             base_quat = self.scene["robot"].data.root_state_w[:, 3:7]
             up = quat_apply(quat_conjugate(base_quat), torch.tensor([[0.0, 0.0, 1.0]], device=self.device))
             projection = torch.eye(3, device=self.device).unsqueeze(0) - up.unsqueeze(-1) @ up.unsqueeze(-2)
@@ -360,8 +363,7 @@ class R1ProPlanetaryMixin:
                 self._transition("lift")
         elif state == "lift":
             opening = 0.0
-            target = self._grasp_position.clone()
-            target[:, 2] += self._pickup_clearance()
+            target = self._pickup_lift_target(arm, ee, gear, elapsed)
             speed = 0.06
             reached = self._pickup_lift_reached(target, ee)
             lifted = float(gear[0, 2]) > self._pick_height + min(0.05, self._pickup_clearance() - 0.01)
@@ -380,12 +382,23 @@ class R1ProPlanetaryMixin:
     def _pickup_clearance(self):
         return 0.10
 
+    def _pickup_lift_target(self, arm, ee, gear, elapsed):
+        target = self._grasp_position.clone()
+        target[:, 2] += self._pickup_clearance()
+        return target
+
     def _pickup_lift_reached(self, target, ee):
         return float((target - ee[:, :3]).norm()) < 0.005
 
     def _planetary_insertion_yaw(self, yaw, pin):
         """Desired gear yaw and whether it is ready to descend onto the pin."""
         return yaw, True
+
+    def _planetary_target_transform(self, ee, gear, level, pin):
+        """Wrist target from the observed gear-to-wrist grasp."""
+        correction = quat_mul(level, quat_conjugate(gear[:, 3:7]))
+        orientation = quat_mul(correction, ee[:, 3:7])
+        return orientation, quat_apply(correction, ee[:, :3] - gear[:, :3])
 
     def _insertion_action(self, arm, gripper, ee, gear, pin, down, elapsed, dt):
         gear_id = self._planetary_gear
@@ -412,9 +425,7 @@ class R1ProPlanetaryMixin:
                 yaw, phase_aligned = self._planetary_insertion_yaw(yaw, pin)
                 level = torch.zeros_like(q)
                 level[:, 0], level[:, 3] = torch.cos(yaw / 2), torch.sin(yaw / 2)
-                correction = quat_mul(level, quat_conjugate(q))
-                orientation = quat_mul(correction, ee[:, 3:7])
-                offset = quat_apply(correction, ee[:, :3] - gear[:, :3])
+                orientation, offset = self._planetary_target_transform(ee, gear, level, pin)
                 clearance = self.PLANETARY_TRANSFER_CLEARANCE if state == "transfer" else 0.045 if state == "realign" else 0.010
                 target = pin + offset
                 target[:, 2] += clearance

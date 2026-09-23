@@ -111,8 +111,9 @@ This flag is available for R1Pro and R1 Lite.
 For the assembly task above, demonstrations are saved as **HDF5 files** containing
 RGB and depth images from three cameras, joint states, actions, scores, and
 timestamps at 20 Hz. MP4 videos are not created automatically.
-Recordings also include torso joint states and targets, so R1 Lite's torso
-movement during ring placement is captured alongside its six-joint arm actions.
+The assembly policies allow torso motion; R1 Lite adjusts its torso during ring
+placement. Recordings include both commanded torso targets and measured joint
+states. Constant targets do not guarantee a stationary torso.
 
 The default output folder is `../data`, relative to the working directory. When
 running from the repository root, this is a `data` folder beside `gearboxAssembly`.
@@ -159,6 +160,9 @@ are enabled automatically. Each accepted seed folder contains `episode.hdf5`,
 episode metadata, a score trace, and a verification report. Failed attempts keep
 their logs but do not count toward the quota.
 
+Keep the source and runtime unchanged during a batch. Use a dedicated checkout
+if development will continue while recordings are being generated.
+
 Read `status.json` in the output folder for progress. Repeating the same command
 resumes the collection and skips completed attempts. To stop after the current
 episode, create an empty `STOP` file in that folder; remove it before resuming.
@@ -174,7 +178,8 @@ python scripts/index_assembly_data.py data/batch --verify-hashes
 ```
 
 This writes `dataset.json` and `episodes.jsonl` with relative paths to accepted
-recordings, preserving robot, seed, workstation, and simulator version.
+recordings, counts by robot and workstation, and simulator/source provenance.
+When a worker supplies `runtime.json`, its path and checksum are included too.
 
 ## Other tasks
 
