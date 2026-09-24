@@ -45,8 +45,9 @@ docker/.container.cfg
 
 # Claude Code per-project state (settings, commands, agents, memory)
 .claude/
-.codex/
+.codex
 docs/superpowers/
+docs/*.md
 
 # Outputs
 **/output/*
@@ -85,7 +86,7 @@ tests/
 .isaac-lab-docker-history
 
 # Saved data
-data/*
+/data/
 log
 
 # Training model

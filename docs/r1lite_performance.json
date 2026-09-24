@@ -1,0 +1,195 @@
+{
+  "date": "2026-09-18",
+  "robot": "r1_lite",
+  "hardware": {
+    "gpu": "NVIDIA RTX A6000",
+    "isaac_sim": "5.1.0",
+    "device": "cuda:0"
+  },
+  "method": {
+    "seed": 44,
+    "environments": 1,
+    "physics_dt": 0.01,
+    "control_dt": 0.05,
+    "warmup_steps": 5,
+    "timed_steps": 30,
+    "timing": "cProfile and wall clock with CUDA synchronization; excludes scene startup and final HDF5 serialization.",
+    "harness": "/tmp/r1lite-fast-physics/benchmark.py",
+    "path": "Production R1 Lite environment, shared fast-physics helper, production camera observation and HDF5 writer paths."
+  },
+  "default": {
+    "partial_benchmark": true,
+    "robot": "r1_lite",
+    "fast_physics": false,
+    "headless": true,
+    "steps": 30,
+    "sim_seconds": 1.5,
+    "wall_seconds": 17.389119361061603,
+    "real_time_factor": 0.08626083753032708,
+    "dataset": "/tmp/r1lite-fast-physics/fail/fail_score0_default.hdf5",
+    "cameras": {
+      "head": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 59.881146789997665,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "left_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 60.75349275490282,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "right_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 54.72533822329541,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      }
+    },
+    "physics_metadata": {
+      "control_dt": 0.05,
+      "physics_dt": 0.01,
+      "robot_solver_position_iterations": 128,
+      "robot_solver_velocity_iterations": 128,
+      "sim": true,
+      "success": false
+    },
+    "recording_hz": 20.0
+  },
+  "fast": {
+    "partial_benchmark": true,
+    "robot": "r1_lite",
+    "fast_physics": true,
+    "headless": true,
+    "steps": 30,
+    "sim_seconds": 1.5,
+    "wall_seconds": 5.902751736110076,
+    "real_time_factor": 0.2541187681710806,
+    "dataset": "/tmp/r1lite-fast-physics/fail/fail_score0_fast.hdf5",
+    "cameras": {
+      "head": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 59.08273569343586,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "left_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 63.44794616714283,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      },
+      "right_hand": {
+        "rgb_shape": [
+          35,
+          240,
+          320,
+          3
+        ],
+        "depth_shape": [
+          35,
+          240,
+          320
+        ],
+        "rgb_std": 55.288096138426745,
+        "rgb_changes": true,
+        "finite_depth_fraction": 1.0
+      }
+    },
+    "physics_metadata": {
+      "control_dt": 0.05,
+      "physics_dt": 0.01,
+      "robot_solver_position_iterations": 32,
+      "robot_solver_velocity_iterations": 8,
+      "sim": true,
+      "success": false
+    },
+    "recording_hz": 20.0
+  },
+  "speedup": 2.945934394408575,
+  "recording_checks": [
+    "35 frames per RGB/depth camera at 320x240, including warmup; timestamps remain 20 Hz.",
+    "RGB images are nonblank and change during the run.",
+    "Left/right arm actions each have six finite joint targets per frame.",
+    "Robot joints and object states remain finite.",
+    "HDF5 records the 0.01 s physics timestep, 0.05 s control timestep, and correct solver iterations.",
+    "Partial benchmark recordings are labelled unsuccessful."
+  ],
+  "regression_checks": {
+    "before": "R1 Lite support subtest failed at the R1Pro-only guard; other checks passed.",
+    "after": "42 tests passed, including R1 Lite and R1Pro configuration isolation and preservation of all other robot settings.",
+    "before_log": "/tmp/r1lite-fast-physics/tests-before.log",
+    "after_log": "/tmp/r1lite-fast-physics/tests-after.log",
+    "python_compilation": "passed",
+    "flake8_E9_F63_F7_F82": "passed",
+    "r1lite_rulegen_bash_syntax_and_flag_help": "passed",
+    "runner_help": "/tmp/r1lite-fast-physics/runner-help.txt",
+    "git_diff_check": "passed"
+  },
+  "limitations": [
+    "Short initial-scene benchmark, not a whole-episode speed measurement.",
+    "R1 Lite gear-seating success with fast physics has not been validated.",
+    "Numerical contact resolution changes with the reduced solver budget; default settings remain 128/128.",
+    "R1Pro insertion-controller changes are not applied to R1 Lite."
+  ],
+  "source_sha256": {
+    "scripts/rule_based_agent.py": "82fd858842283836af05e866a67760a8dce93fbb2aef73b198b8d30328777b67",
+    "scripts/r1lite_rulegen.sh": "3e0688578aa7acb90b1618292bde9a7b8071119b799bd577eda268346d1bd00a",
+    "scripts/evaluate_r1pro.py": "e01ba23e4b252ebb4b2904cf0e48c5097ffd55fa28d83d89f808be9b8a33b5a3",
+    "scripts/test_r1pro_planetary.py": "bcab67a31927ef5814e405f48cc15458fde49ccd480b5c3ec083468f103257fd",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/physics_profiles.py": "baec261440d551e2cf32082fa00fca089e6b9b34273289f745247ebe43a06b98",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_physics.py": "d3dde4aea59eab57a57f5b52b807fbb153837aacc4fca0433c68f0f9fe32bafd",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/galaxea_robots.py": "776c95b2f21eb1068fdf968a047488d7ac6a77aede49640749443a8f5e344654"
+  }
+}

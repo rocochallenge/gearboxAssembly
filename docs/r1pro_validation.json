@@ -1,0 +1,295 @@
+{
+  "date": "2026-09-17",
+  "base_commit": "9f039d4265933f90cb5e8500237c0a1bfbe57ce2",
+  "runtime": "Isaac Sim 5.1, NVIDIA RTX A6000, one environment per process",
+  "method": "Fresh process per seed; production physics, randomization and scorer; camera rendering and HDF5 recording disabled.",
+  "criteria": {
+    "xy_tolerance_mm": 2,
+    "absolute_z_tolerance_mm": 12,
+    "tilt_tolerance_rad": 0.05,
+    "first_three_success": "All three distinct pins match the production scorer after release, retreat and parking. Feedback policy must also report planetary_complete."
+  },
+  "regression_checks": {
+    "passed": 20,
+    "command": "python scripts/test_r1pro_planetary.py --headless"
+  },
+  "legacy_seed_42": {
+    "simulation_seconds": 27.0,
+    "seated": [
+      false,
+      true,
+      true
+    ],
+    "planetary_score": 2,
+    "scope": "Original timed policy, stopped after the first-three sequence; gear one was not picked up."
+  },
+  "current_controller_runs": [
+    {
+      "seed": 42,
+      "policy": "feedback",
+      "full_assembly": false,
+      "first_three_success": true,
+      "assembly_success": null,
+      "simulation_seconds": 88.9,
+      "state": "park",
+      "active_gear": 3,
+      "failure": null,
+      "verified_first_three": true,
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "planetary_score": 3,
+      "assembly_score": 3,
+      "gear_positions": [
+        [
+          0.5350024104118347,
+          0.0467986986041069,
+          0.9112898111343384
+        ],
+        [
+          0.4443528652191162,
+          0.023649265989661217,
+          0.9113309383392334
+        ],
+        [
+          0.5096983313560486,
+          -0.043301455676555634,
+          0.9113150835037231
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.509714663028717,
+          -0.04326557740569115,
+          0.9016500115394592
+        ],
+        [
+          0.5353335738182068,
+          0.04668286070227623,
+          0.9016289710998535
+        ],
+        [
+          0.44406893849372864,
+          0.023350384086370468,
+          0.9016692638397217
+        ]
+      ],
+      "pin_assignment": [
+        1,
+        2,
+        0
+      ],
+      "xy_errors_mm": [
+        0.35083843977190554,
+        0.412243593018502,
+        0.03942047624150291
+      ],
+      "pick_retry_events": 1
+    },
+    {
+      "seed": 43,
+      "policy": "feedback",
+      "full_assembly": false,
+      "first_three_success": true,
+      "assembly_success": null,
+      "simulation_seconds": 73.95,
+      "state": "park",
+      "active_gear": 3,
+      "failure": null,
+      "verified_first_three": true,
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "planetary_score": 3,
+      "assembly_score": 3,
+      "gear_positions": [
+        [
+          0.405539870262146,
+          0.052435196936130524,
+          0.9113475680351257
+        ],
+        [
+          0.49903035163879395,
+          0.0554514080286026,
+          0.9111901521682739
+        ],
+        [
+          0.45494136214256287,
+          -0.027088621631264687,
+          0.9112573862075806
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.4550185799598694,
+          -0.027067018672823906,
+          0.9015834331512451
+        ],
+        [
+          0.4994192123413086,
+          0.05524720624089241,
+          0.9015273451805115
+        ],
+        [
+          0.40527084469795227,
+          0.05213027447462082,
+          0.9016284942626953
+        ]
+      ],
+      "pin_assignment": [
+        2,
+        1,
+        0
+      ],
+      "xy_errors_mm": [
+        0.4066355468239635,
+        0.4392163536977023,
+        0.08018278458621353
+      ],
+      "pick_retry_events": 0
+    }
+  ],
+  "held_out_full_sequence_check": {
+    "seed_was_used_for_tuning": false,
+    "first_three_milestone": {
+      "simulation_seconds": 77.0,
+      "state": "park",
+      "active_gear": 3,
+      "failure": null,
+      "verified_first_three": true,
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "planetary_score": 3,
+      "assembly_score": 3,
+      "gear_positions": [
+        [
+          0.4870658218860626,
+          0.05218278989195824,
+          0.9112614393234253
+        ],
+        [
+          0.39333099126815796,
+          0.05041041970252991,
+          0.911410927772522
+        ],
+        [
+          0.44186484813690186,
+          -0.029554883018136024,
+          0.9113664627075195
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.4418067932128906,
+          -0.029685674235224724,
+          0.9016518592834473
+        ],
+        [
+          0.4873232841491699,
+          0.05201682075858116,
+          0.9015948176383972
+        ],
+        [
+          0.3931412398815155,
+          0.05018114298582077,
+          0.9017074704170227
+        ]
+      ],
+      "pin_assignment": [
+        1,
+        2,
+        0
+      ],
+      "xy_errors_mm": [
+        0.30632101697847247,
+        0.2976128307636827,
+        0.14309688413050026
+      ]
+    },
+    "final_result": {
+      "seed": 44,
+      "policy": "feedback",
+      "full_assembly": true,
+      "first_three_success": true,
+      "assembly_success": false,
+      "simulation_seconds": 109.55,
+      "state": "park",
+      "active_gear": 3,
+      "failure": null,
+      "verified_first_three": true,
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "planetary_score": 3,
+      "assembly_score": 3,
+      "gear_positions": [
+        [
+          0.457414448261261,
+          0.069722019135952,
+          0.9113114476203918
+        ],
+        [
+          0.3651503622531891,
+          0.05398938059806824,
+          0.9114378690719604
+        ],
+        [
+          0.4248919188976288,
+          -0.017934182658791542,
+          0.9113703370094299
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.42470645904541016,
+          -0.01793297380208969,
+          0.9016631245613098
+        ],
+        [
+          0.4576301872730255,
+          0.06960602104663849,
+          0.9016217589378357
+        ],
+        [
+          0.36475691199302673,
+          0.05385211855173111,
+          0.9017241597175598
+        ]
+      ],
+      "pin_assignment": [
+        1,
+        2,
+        0
+      ],
+      "xy_errors_mm": [
+        0.2449466846883297,
+        0.416706083342433,
+        0.1854637812357396
+      ]
+    }
+  },
+  "limitations": [
+    "Seeds 42 and 43 were used during development. One additional held-out seed is insufficient to establish a high success rate across unseen layouts.",
+    "First-three validation is separate from five-part assembly. The later assembly stages retain the existing timed sequence.",
+    "Simulation ground-truth object poses are used; physical robot performance has not been measured.",
+    "Episode budget is now 160 simulated seconds, with a 120-second first-three budget; this is a reliability-over-throughput tradeoff."
+  ],
+  "source_sha256": {
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_planetary.py": "72b9760ca34e4f9bb04a6770afc97f594cdcb46061f031020cdc39b5e1a993d1",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_rule_policy.py": "5094460c86087054f0b89171621eb92b6b74b3d2af4c346131d54715f3f562c0",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_lite_rule_policy.py": "789b5fab7398ee57921ae93c80bda264ba1ae6be365dbde66400a22fd1df0c63",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/tasks/direct/galaxea_lab_external/galaxea_lab_external_env.py": "7590b96dd762e3ebfc73a9ed9e20f70b65198a1acdd2cd95cfed25840ecf2e60",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/tasks/direct/galaxea_lab_external/galaxea_lab_external_env_cfg.py": "9a95f3390555ff02ef586cbfc3c8cafe810e2bbc499d02c976d8b26410906405",
+    "scripts/evaluate_r1pro.py": "1edc8f98c00d8e3829b14ed55c6bd50a3e9f6f5024c876526c55574277fe9361",
+    "scripts/test_r1pro_planetary.py": "0487fb2ff3206e105787eb033409290ea86e26c450d408b3bce175d084bb793e"
+  }
+}

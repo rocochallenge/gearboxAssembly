@@ -8,15 +8,16 @@
 A ``RobotBundle`` groups everything that varies per-robot (articulation
 config, camera prim paths, joint dof-name strings, rule-policy classes)
 into one frozen dataclass so each task env_cfg can read a single source
-of truth. Switching between R1 and R1_Lite is one symbol edit:
+of truth. Switching between R1, R1_Lite and R1Pro is one symbol edit:
 
-    ACTIVE_ROBOT_BUNDLE = GALAXEA_R1_LITE_BUNDLE  # was GALAXEA_R1_BUNDLE
+    ACTIVE_ROBOT_BUNDLE = GALAXEA_R1_PRO_BUNDLE  # or GALAXEA_R1_LITE_BUNDLE / GALAXEA_R1_BUNDLE
 
 The two non-recovery env_cfgs read ``ACTIVE_ROBOT_BUNDLE.rule_policy_class``
 for their rule-policy reference; the gearbox-recovery env_cfg reads
 ``ACTIVE_ROBOT_BUNDLE.recovery_rule_policy_class``.
 """
 
+import os
 from dataclasses import dataclass
 
 from isaaclab.assets import ArticulationCfg
@@ -25,23 +26,27 @@ from isaaclab.sensors import CameraCfg
 from .galaxea_robots import (
     GALAXEA_R1_CHALLENGE_CFG,
     GALAXEA_R1_LITE_CFG,
+    GALAXEA_R1_PRO_CFG,
     GALAXEA_HEAD_CAMERA_CFG,
     GALAXEA_HAND_CAMERA_CFG,
     GALAXEA_R1_LITE_HEAD_CAMERA_CFG,
     GALAXEA_R1_LITE_HAND_CAMERA_CFG,
+    GALAXEA_R1_PRO_HEAD_CAMERA_CFG,
+    GALAXEA_R1_PRO_HAND_CAMERA_CFG,
 )
 from .galaxea_rule_policy import GalaxeaRulePolicy
 from .recovery_rule_policy import RecoveryRulePolicy
-from .r1_lite_rule_policy import R1LiteRulePolicy
+from .r1_lite_feedback_policy import R1LiteFeedbackPolicy
 from .r1_lite_recovery_rule_policy import R1LiteRecoveryRulePolicy
+from .r1_pro_rule_policy import R1ProRulePolicy, R1ProRecoveryRulePolicy
 
 
 def _torso_pos_from_cfg(cfg: ArticulationCfg) -> tuple[float, ...]:
     """Return torso joint positions from an articulation cfg's
     ``init_state.joint_pos``, ordered by the trailing index.
 
-    R1 has four torso joints (``torso_joint1..4``), R1_Lite has three
-    (``torso_joint1..3``); we return whatever's declared so the bundle's
+    R1 and R1Pro have four torso joints (``torso_joint1..4``), R1_Lite has
+    three (``torso_joint1..3``); we return whatever's declared so the bundle's
     ``initial_torso_pos`` stays in sync regardless of the chain length.
     """
     jp = cfg.init_state.joint_pos
@@ -67,6 +72,9 @@ class RobotBundle:
     head_camera_cfg: CameraCfg
     left_hand_camera_cfg: CameraCfg
     right_hand_camera_cfg: CameraCfg
+    #: Joints matched by ``*_arm_joint_pattern`` per arm (6 for R1/R1_Lite, 7 for R1Pro).
+    #: The env_cfgs size their action/observation vectors as ``2 * num_arm_joints + 2``.
+    num_arm_joints: int
     left_arm_joint_pattern: str
     right_arm_joint_pattern: str
     left_gripper_dof_name: str
@@ -90,6 +98,7 @@ GALAXEA_R1_BUNDLE = RobotBundle(
     right_hand_camera_cfg=GALAXEA_HAND_CAMERA_CFG.replace(
         prim_path="/World/envs/env_.*/Robot/right_realsense_link/right_hand_cam/right_hand_cam",
     ),
+    num_arm_joints=6,
     left_arm_joint_pattern="left_arm_joint.*",
     right_arm_joint_pattern="right_arm_joint.*",
     left_gripper_dof_name="left_gripper_axis1",
@@ -118,6 +127,7 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
     right_hand_camera_cfg=GALAXEA_R1_LITE_HAND_CAMERA_CFG.replace(
         prim_path="/World/envs/env_.*/Robot/right_D405_link/right_hand_cam",
     ),
+    num_arm_joints=6,
     left_arm_joint_pattern="left_arm_joint.*",
     right_arm_joint_pattern="right_arm_joint.*",
     left_gripper_dof_name="left_gripper_finger_joint1",
@@ -132,11 +142,61 @@ GALAXEA_R1_LITE_BUNDLE = RobotBundle(
     ),
     torso_joint_pattern="torso_joint[1-3]",
     initial_torso_pos=_torso_pos_from_cfg(GALAXEA_R1_LITE_CFG),
-    rule_policy_class=R1LiteRulePolicy,
+    rule_policy_class=R1LiteFeedbackPolicy,
     recovery_rule_policy_class=R1LiteRecoveryRulePolicy,
 )
 
+GALAXEA_R1_PRO_BUNDLE = RobotBundle(
+    name="r1_pro",
+    articulation_cfg=GALAXEA_R1_PRO_CFG,
+    head_camera_cfg=GALAXEA_R1_PRO_HEAD_CAMERA_CFG,
+    left_hand_camera_cfg=GALAXEA_R1_PRO_HAND_CAMERA_CFG,
+    right_hand_camera_cfg=GALAXEA_R1_PRO_HAND_CAMERA_CFG.replace(
+        prim_path="/World/envs/env_.*/Robot/right_d405_link/right_hand_cam",
+    ),
+    # 7-DOF arms: left/right_arm_joint1..7.
+    num_arm_joints=7,
+    left_arm_joint_pattern="left_arm_joint.*",
+    right_arm_joint_pattern="right_arm_joint.*",
+    left_gripper_dof_name="left_gripper_finger_joint1",
+    right_gripper_dof_name="right_gripper_finger_joint1",
+    gripper_collision_link_names=(
+        "left_gripper_link",
+        "left_gripper_finger_link1",
+        "left_gripper_finger_link2",
+        "right_gripper_link",
+        "right_gripper_finger_link1",
+        "right_gripper_finger_link2",
+    ),
+    # torso_joint4 is the waist yaw; kept at 0 (see GALAXEA_R1_PRO_CFG).
+    torso_joint_pattern="torso_joint[1-4]",
+    initial_torso_pos=_torso_pos_from_cfg(GALAXEA_R1_PRO_CFG),
+    rule_policy_class=R1ProRulePolicy,
+    recovery_rule_policy_class=R1ProRecoveryRulePolicy,
+)
 
-# The single switch. Edit this line to flip the active robot for all tasks.
-ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_LITE_BUNDLE
-# ACTIVE_ROBOT_BUNDLE: RobotBundle = GALAXEA_R1_BUNDLE
+
+# The default remains R1Pro for existing entrypoints.  A process can select a
+# different embodiment before importing the task package, which lets data
+# generation scripts run different robots concurrently without editing source:
+#
+#   ROCO_ROBOT_BUNDLE=r1_lite python scripts/rule_based_agent.py ...
+#
+# The env_cfg classes read this value at import/class-definition time, so the
+# variable must be exported before the Python process starts.
+_ROBOT_BUNDLES = {
+    "r1": GALAXEA_R1_BUNDLE,
+    "r1_lite": GALAXEA_R1_LITE_BUNDLE,
+    "r1lite": GALAXEA_R1_LITE_BUNDLE,
+    "r1_pro": GALAXEA_R1_PRO_BUNDLE,
+    "r1pro": GALAXEA_R1_PRO_BUNDLE,
+}
+_requested_bundle = os.environ.get("ROCO_ROBOT_BUNDLE", "").strip().lower()
+if _requested_bundle:
+    try:
+        ACTIVE_ROBOT_BUNDLE: RobotBundle = _ROBOT_BUNDLES[_requested_bundle]
+    except KeyError as exc:
+        valid = ", ".join(sorted(_ROBOT_BUNDLES))
+        raise ValueError(f"Unknown ROCO_ROBOT_BUNDLE={_requested_bundle!r}; choose one of: {valid}") from exc
+else:
+    ACTIVE_ROBOT_BUNDLE = GALAXEA_R1_PRO_BUNDLE

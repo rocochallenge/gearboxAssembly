@@ -1,0 +1,2471 @@
+{
+  "date": "2026-09-18",
+  "robot": "r1_lite",
+  "runtime": "Isaac Sim 5.1 / Isaac Lab / GPU PhysX on RTX A6000",
+  "default_policy": "R1LiteFeedbackPolicy",
+  "summary": {
+    "fresh_trials": 6,
+    "first_three_stage_verified": 6,
+    "first_three_passed": 6,
+    "final_fourth_trials": 3,
+    "final_first_four_passed": 1,
+    "layouts": [
+      43,
+      44
+    ],
+    "normal_first_three_passed": 3,
+    "normal_trials": 3,
+    "fast_first_three_passed": 3,
+    "fast_trials": 3
+  },
+  "implementation": {
+    "torso_joint_positions_rad": [
+      0.15,
+      0.0,
+      -0.39
+    ],
+    "pickup_clearance_m": 0.035,
+    "planetary_transfer_clearance_m": 0.045,
+    "planetary_tool_yaw_constrained": true,
+    "jaw_opening_m": 0.05,
+    "sun_grip_effort_ceiling_n": 100.0,
+    "sun_position_preload_m": 0.0015,
+    "tool_axis": "+X",
+    "single_environment": true,
+    "episode_length_s": 160,
+    "feedback": "Live object and end-effector poses, verified lift and seating, bounded retries, post-retreat and parking checks.",
+    "scoring": "Existing 2 mm planetary XY / 12 mm Z, 5 mm central XYZ, 0.05 rad tilt tolerances retained.",
+    "physics": "100 Hz physics and 20 Hz control/recording retained. Normal solver 128/128; fast solver 32/8. No collision-asset changes in this Lite adaptation."
+  },
+  "diagnosis": [
+    {
+      "finding": "Original folded torso cannot reach far-edge midline pickups with an upright tool.",
+      "change": "Unfold the Lite torso and use a 35 mm pickup clearance.",
+      "evidence": "Both-arm URDF reach regression and fresh seed-43 placement."
+    },
+    {
+      "finding": "An 80 mm planetary transfer path can bring the carried gear into torso_link3 near the rear pin.",
+      "change": "Use a 45 mm planetary transfer path with the revised torso posture.",
+      "contact_probe": "/tmp/r1lite-assembly/unfolded-transfer-contacts43.contacts.jsonl",
+      "note": "100 Hz probe with the nearby experimental torso (0.165, 0, -0.375) observed torso-to-gear contact at 8.86 simulated seconds; the final posture moves slightly farther back."
+    },
+    {
+      "finding": "The Pro 8 N meshing effort did not retain the shallow Lite grasp. Keeping the stock 100 N ceiling enabled a complete four-gear camera run.",
+      "change": "Lite retains its original jaw ceiling; axial preload and clearance checks remain bounded.",
+      "remaining_failure": "Fresh fast seed 43 lost the fourth gear during release after partial meshing; normal seed 44 ejected it after release. Both retained all first three gears."
+    }
+  ],
+  "tests": {
+    "lite_regression": {
+      "passed": 12,
+      "failed": 0,
+      "log": "/tmp/r1lite-assembly/lite-tests-final.log"
+    },
+    "pro_regression": {
+      "passed": 42,
+      "failed": 0,
+      "log": "/tmp/r1lite-assembly/pro-regression-final.log"
+    },
+    "offline_urdf_reach": {
+      "poses": 63,
+      "max_weighted_residual": 5.4010616743893196e-08,
+      "minimum_joint_limit_margin_rad": 0.1353023141659413,
+      "rotation_residual_weight": 0.2,
+      "note": "Downward tool, both arms, pickup grid and carrier waypoints; kinematic reach only, not collision or dynamic success.",
+      "result_path": "/tmp/r1lite-assembly/stance-reach-final.json"
+    },
+    "static_checks": "Python compilation, flake8 E9/F63/F7/F82, git diff --check passed."
+  },
+  "fresh_trials": [
+    {
+      "result_path": "/tmp/r1lite-assembly/feedback-v12-fast43.json",
+      "result_sha256": "37ec7b6960ef117f77e12bae102c4bb5c262cc99fe6fd9002808d4552e5cc785",
+      "note": "Fresh GPU episode, 32/8 solver; final first-three controller, 8 N fourth-gear effort.",
+      "first_three_controller_matches_final": true,
+      "first_four_requested": true,
+      "fourth_controller_matches_final": false,
+      "sun_grip_effort_ceiling_n": 8.0,
+      "first_three_verified_at_seconds": 56.0,
+      "first_three_verification_snapshot": {
+        "simulation_seconds": 56.0,
+        "state": "park",
+        "active_gear": 3,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.5405098795890808,
+          -0.3931885361671448,
+          0.9020799994468689
+        ],
+        "centre_quaternion": [
+          0.9999514818191528,
+          -3.8712885725544766e-05,
+          -0.0021667189430445433,
+          -0.00960739515721798
+        ],
+        "carrier_position": [
+          0.4563223719596863,
+          -0.002502084244042635,
+          0.90217125415802
+        ],
+        "centre_error_mm": [
+          84.18750762939453,
+          -390.68646240234375,
+          -0.09125471115112305
+        ],
+        "centre_seat_error_mm": [
+          84.22452545166016,
+          -390.68670654296875,
+          -9.091197967529297
+        ],
+        "right_ee_pose": [
+          0.569797933101654,
+          -0.38474753499031067,
+          1.1931679248809814,
+          0.7598119974136353,
+          -0.011391701176762581,
+          0.6451597213745117,
+          -0.07952889055013657
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.569797933101654,
+          -0.38474753499031067,
+          1.1931679248809814,
+          0.7598119974136353,
+          -0.011391701176762581,
+          0.6451597213745117,
+          -0.07952889055013657
+        ],
+        "active_arm_joints": [
+          -0.3485724627971649,
+          1.2070693969726562,
+          -0.976224958896637,
+          0.636522114276886,
+          0.0900118425488472,
+          -0.1798263043165207
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.40966564416885376,
+            0.02486775629222393,
+            0.9116367101669312
+          ],
+          [
+            0.5033181309700012,
+            0.024104107171297073,
+            0.912024199962616
+          ],
+          [
+            0.455788254737854,
+            -0.05650852248072624,
+            0.9118214249610901
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9988359212875366,
+            0.0022055685985833406,
+            -0.007509944494813681,
+            0.047596659511327744
+          ],
+          [
+            0.9987277388572693,
+            -0.0005765815149061382,
+            -4.7164823627099395e-05,
+            0.05042405053973198
+          ],
+          [
+            0.9908854365348816,
+            0.0005927761667408049,
+            -0.0032127946615219116,
+            -0.13466735184192657
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          0.5003408789634705,
+          9.405664443969727
+        ],
+        "right_arm_joints": [
+          -0.3485724627971649,
+          1.2070693969726562,
+          -0.976224958896637,
+          0.636522114276886,
+          0.0900118425488472,
+          -0.1798263043165207
+        ],
+        "pin_positions": [
+          [
+            0.45585381984710693,
+            -0.05650005117058754,
+            0.9021709561347961
+          ],
+          [
+            0.5036527514457703,
+            0.023888222873210907,
+            0.9023651480674744
+          ],
+          [
+            0.40945708751678467,
+            0.024705590680241585,
+            0.9019776582717896
+          ]
+        ],
+        "pin_assignment": [
+          2,
+          1,
+          0
+        ],
+        "xy_errors_mm": [
+          0.26418472407385707,
+          0.39821714744903147,
+          0.06611010758206248
+        ]
+      },
+      "result": {
+        "robot": "r1_lite",
+        "diagnostic_resume": null,
+        "seed": 43,
+        "wall_seconds": 530.4719008740503,
+        "evaluation_limit_seconds": null,
+        "fast_physics": true,
+        "robot_solver_position_iterations": 32,
+        "robot_solver_velocity_iterations": 8,
+        "policy": "feedback",
+        "full_assembly": false,
+        "first_four_success": false,
+        "first_three_success": true,
+        "assembly_success": null,
+        "simulation_seconds": 73.6,
+        "state": "failed",
+        "active_gear": 4,
+        "failure": "gear 4: grasp too low to mesh without touching the planetary gears",
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.4639038145542145,
+          0.006619216874241829,
+          0.9367304444313049
+        ],
+        "centre_quaternion": [
+          0.9854976534843445,
+          -0.06129787117242813,
+          -0.1577623337507248,
+          0.012158461846411228
+        ],
+        "carrier_position": [
+          0.45739251375198364,
+          0.00033145531779155135,
+          0.9023573994636536
+        ],
+        "centre_error_mm": [
+          6.511301040649414,
+          6.287761688232422,
+          34.373046875
+        ],
+        "centre_seat_error_mm": [
+          6.484836578369141,
+          6.227414608001709,
+          25.373279571533203
+        ],
+        "right_ee_pose": [
+          0.4517657160758972,
+          -0.003305795369669795,
+          1.1149256229400635,
+          0.6943783164024353,
+          0.028940247371792793,
+          0.719027042388916,
+          0.0011182656744495034
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.4517657160758972,
+          -0.003305795369669795,
+          1.1149256229400635,
+          0.6943783164024353,
+          0.028940247371792793,
+          0.719027042388916,
+          0.0011182656744495034
+        ],
+        "active_arm_joints": [
+          1.3722038269042969,
+          2.0736563205718994,
+          -1.366013526916504,
+          0.7066348195075989,
+          -0.4851798713207245,
+          1.360853910446167
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.41086897253990173,
+            0.027842311188578606,
+            0.912675678730011
+          ],
+          [
+            0.5043513178825378,
+            0.027036016806960106,
+            0.9117874503135681
+          ],
+          [
+            0.4572751224040985,
+            -0.0536498986184597,
+            0.9124813079833984
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9847756624221802,
+            0.004492209292948246,
+            -0.009150763973593712,
+            0.17353112995624542
+          ],
+          [
+            0.9997840523719788,
+            0.0027397763915359974,
+            0.003484535263851285,
+            -0.02029893919825554
+          ],
+          [
+            0.9889887571334839,
+            -0.005445525515824556,
+            0.006158499978482723,
+            -0.14776217937469482
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          7.244093418121338,
+          -7.9283366203308105
+        ],
+        "right_arm_joints": [
+          1.3722038269042969,
+          2.0736563205718994,
+          -1.366013526916504,
+          0.7066348195075989,
+          -0.4851798713207245,
+          1.360853910446167
+        ],
+        "pin_positions": [
+          [
+            0.4570659101009369,
+            -0.053666338324546814,
+            0.9027204513549805
+          ],
+          [
+            0.5046535730361938,
+            0.026844564825296402,
+            0.9020407199859619
+          ],
+          [
+            0.4104556739330292,
+            0.027416152879595757,
+            0.9023137092590332
+          ]
+        ],
+        "pin_assignment": [
+          2,
+          1,
+          0
+        ],
+        "xy_errors_mm": [
+          0.5936553352512419,
+          0.35778770688921213,
+          0.20985721494071186
+        ]
+      }
+    },
+    {
+      "result_path": "/tmp/r1lite-assembly/feedback-v12-normal43.json",
+      "result_sha256": "1135f7d947dbfe870c7846993b416df4fa1c558da22842c0363235f8b57bd06c",
+      "note": "Fresh GPU episode, 128/128 solver; final first-three controller, 8 N fourth-gear effort.",
+      "first_three_controller_matches_final": true,
+      "first_four_requested": true,
+      "fourth_controller_matches_final": false,
+      "sun_grip_effort_ceiling_n": 8.0,
+      "first_three_verified_at_seconds": 55.95,
+      "first_three_verification_snapshot": {
+        "simulation_seconds": 55.95,
+        "state": "hover",
+        "active_gear": 4,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.6589429974555969,
+          -0.17346589267253876,
+          0.9010866284370422
+        ],
+        "centre_quaternion": [
+          0.9976770877838135,
+          -7.172090408857912e-05,
+          0.00021812757768202573,
+          -0.06811941415071487
+        ],
+        "carrier_position": [
+          0.4583941102027893,
+          0.0010160148376598954,
+          0.9016574025154114
+        ],
+        "centre_error_mm": [
+          200.54888916015625,
+          -174.48191833496094,
+          -0.5707740783691406
+        ],
+        "centre_seat_error_mm": [
+          200.54510498046875,
+          -174.4828338623047,
+          -9.570777893066406
+        ],
+        "right_ee_pose": [
+          0.5739313364028931,
+          -0.38599202036857605,
+          1.1937679052352905,
+          0.754654586315155,
+          -0.009682869538664818,
+          0.6537513136863708,
+          -0.054879434406757355
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.5739313364028931,
+          -0.38599202036857605,
+          1.1937679052352905,
+          0.754654586315155,
+          -0.009682869538664818,
+          0.6537513136863708,
+          -0.054879434406757355
+        ],
+        "active_arm_joints": [
+          -0.3539823293685913,
+          1.229575276374817,
+          -1.009714961051941,
+          0.6751412749290466,
+          0.12781892716884613,
+          -0.21771515905857086
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.41151148080825806,
+            0.027700919657945633,
+            0.9113367795944214
+          ],
+          [
+            0.5050415992736816,
+            0.028325563296675682,
+            0.9112980365753174
+          ],
+          [
+            0.45885834097862244,
+            -0.053014758974313736,
+            0.9113374948501587
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9985030293464661,
+            -0.00017055674106813967,
+            0.003651419887319207,
+            0.05457388609647751
+          ],
+          [
+            0.9985150694847107,
+            0.000728650891687721,
+            0.0037343280855566263,
+            0.05434131622314453
+          ],
+          [
+            0.9924410581588745,
+            0.0010073829907923937,
+            0.004568679258227348,
+            -0.12263226509094238
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          -0.015365801751613617,
+          9.374809265136719
+        ],
+        "right_arm_joints": [
+          -0.3539823293685913,
+          1.229575276374817,
+          -1.009714961051941,
+          0.6751412749290466,
+          0.12781892716884613,
+          -0.21771515905857086
+        ],
+        "pin_positions": [
+          [
+            0.4587642252445221,
+            -0.052982717752456665,
+            0.9016628265380859
+          ],
+          [
+            0.5053093433380127,
+            0.028138207271695137,
+            0.9016348123550415
+          ],
+          [
+            0.4111115336418152,
+            0.02749256230890751,
+            0.9016746282577515
+          ]
+        ],
+        "pin_assignment": [
+          2,
+          1,
+          0
+        ],
+        "xy_errors_mm": [
+          0.45096621033735573,
+          0.3267861029598862,
+          0.09942038013832644
+        ]
+      },
+      "result": {
+        "robot": "r1_lite",
+        "diagnostic_resume": null,
+        "seed": 43,
+        "wall_seconds": 946.0337072550319,
+        "evaluation_limit_seconds": null,
+        "fast_physics": false,
+        "robot_solver_position_iterations": 128,
+        "robot_solver_velocity_iterations": 128,
+        "policy": "feedback",
+        "full_assembly": false,
+        "first_four_success": false,
+        "first_three_success": true,
+        "assembly_success": null,
+        "simulation_seconds": 71.55,
+        "state": "failed",
+        "active_gear": 4,
+        "failure": "gear 4: no clear top-down grasp",
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.5008133053779602,
+          -0.007183456793427467,
+          0.9285256862640381
+        ],
+        "centre_quaternion": [
+          0.8987240195274353,
+          0.30673947930336,
+          0.016443654894828796,
+          -0.312946617603302
+        ],
+        "carrier_position": [
+          0.46120983362197876,
+          0.0010184883140027523,
+          0.9016526341438293
+        ],
+        "centre_error_mm": [
+          39.60346984863281,
+          -8.201945304870605,
+          26.8730525970459
+        ],
+        "centre_seat_error_mm": [
+          39.59918212890625,
+          -8.203033447265625,
+          17.873048782348633
+        ],
+        "right_ee_pose": [
+          0.4122951328754425,
+          0.004679981153458357,
+          1.179721713066101,
+          0.7093178033828735,
+          0.0006842854782007635,
+          0.7048879265785217,
+          0.0008642552420496941
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.4122951328754425,
+          0.004679981153458357,
+          1.179721713066101,
+          0.7093178033828735,
+          0.0006842854782007635,
+          0.7048879265785217,
+          0.0008642552420496941
+        ],
+        "active_arm_joints": [
+          1.573341727256775,
+          2.0999529361724854,
+          -1.6055662631988525,
+          1.0753934383392334,
+          -0.546240508556366,
+          1.5721954107284546
+        ],
+        "pick_attempt": 2,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.4143058657646179,
+            0.02769363299012184,
+            0.9113326668739319
+          ],
+          [
+            0.5077829957008362,
+            0.028171353042125702,
+            0.9113391041755676
+          ],
+          [
+            0.4617612361907959,
+            -0.053018782287836075,
+            0.9113587141036987
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.998530387878418,
+            -0.0002272596029797569,
+            0.0027628943789750338,
+            0.05412320792675018
+          ],
+          [
+            0.9986612796783447,
+            0.010978927835822105,
+            -0.002436366630718112,
+            0.05048913508653641
+          ],
+          [
+            0.9874938726425171,
+            0.0006138960598036647,
+            0.010695700533688068,
+            -0.15729235112667084
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          -0.16136793792247772,
+          5.268426895141602
+        ],
+        "right_arm_joints": [
+          1.573341727256775,
+          2.0999529361724854,
+          -1.6055662631988525,
+          1.0753934383392334,
+          -0.546240508556366,
+          1.5721954107284546
+        ],
+        "pin_positions": [
+          [
+            0.46159279346466064,
+            -0.05298015475273132,
+            0.9016589522361755
+          ],
+          [
+            0.5081185698509216,
+            0.028151847422122955,
+            0.9016269445419312
+          ],
+          [
+            0.41392093896865845,
+            0.027483779937028885,
+            0.9016720056533813
+          ]
+        ],
+        "pin_assignment": [
+          2,
+          1,
+          0
+        ],
+        "xy_errors_mm": [
+          0.4384141066111624,
+          0.33614056883379817,
+          0.1728150382405147
+        ]
+      }
+    },
+    {
+      "result_path": "/tmp/r1lite-assembly/feedback-final-fast43-four.json",
+      "result_sha256": "e2a9cd2d7c4e4fdb37e14ae8508249b607e7ad86cf8d4947dfb2535371bda429",
+      "note": "Fresh GPU episode, 32/8 solver; final controller with stock 100 N Lite jaw ceiling.",
+      "first_three_controller_matches_final": true,
+      "first_four_requested": true,
+      "fourth_controller_matches_final": true,
+      "sun_grip_effort_ceiling_n": 100.0,
+      "first_three_verified_at_seconds": 56.0,
+      "first_three_verification_snapshot": {
+        "simulation_seconds": 56.0,
+        "state": "park",
+        "active_gear": 3,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.5405098795890808,
+          -0.3931885361671448,
+          0.9020799994468689
+        ],
+        "centre_quaternion": [
+          0.9999514818191528,
+          -3.8712885725544766e-05,
+          -0.0021667189430445433,
+          -0.00960739515721798
+        ],
+        "carrier_position": [
+          0.4563223719596863,
+          -0.002502084244042635,
+          0.90217125415802
+        ],
+        "centre_error_mm": [
+          84.18750762939453,
+          -390.68646240234375,
+          -0.09125471115112305
+        ],
+        "centre_seat_error_mm": [
+          84.22452545166016,
+          -390.68670654296875,
+          -9.091197967529297
+        ],
+        "right_ee_pose": [
+          0.569797933101654,
+          -0.38474753499031067,
+          1.1931679248809814,
+          0.7598119974136353,
+          -0.011391701176762581,
+          0.6451597213745117,
+          -0.07952889055013657
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.569797933101654,
+          -0.38474753499031067,
+          1.1931679248809814,
+          0.7598119974136353,
+          -0.011391701176762581,
+          0.6451597213745117,
+          -0.07952889055013657
+        ],
+        "active_arm_joints": [
+          -0.3485724627971649,
+          1.2070693969726562,
+          -0.976224958896637,
+          0.636522114276886,
+          0.0900118425488472,
+          -0.1798263043165207
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.40966564416885376,
+            0.02486775629222393,
+            0.9116367101669312
+          ],
+          [
+            0.5033181309700012,
+            0.024104107171297073,
+            0.912024199962616
+          ],
+          [
+            0.455788254737854,
+            -0.05650852248072624,
+            0.9118214249610901
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9988359212875366,
+            0.0022055685985833406,
+            -0.007509944494813681,
+            0.047596659511327744
+          ],
+          [
+            0.9987277388572693,
+            -0.0005765815149061382,
+            -4.7164823627099395e-05,
+            0.05042405053973198
+          ],
+          [
+            0.9908854365348816,
+            0.0005927761667408049,
+            -0.0032127946615219116,
+            -0.13466735184192657
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          0.5003408789634705,
+          9.405664443969727
+        ],
+        "right_arm_joints": [
+          -0.3485724627971649,
+          1.2070693969726562,
+          -0.976224958896637,
+          0.636522114276886,
+          0.0900118425488472,
+          -0.1798263043165207
+        ],
+        "pin_positions": [
+          [
+            0.45585381984710693,
+            -0.05650005117058754,
+            0.9021709561347961
+          ],
+          [
+            0.5036527514457703,
+            0.023888222873210907,
+            0.9023651480674744
+          ],
+          [
+            0.40945708751678467,
+            0.024705590680241585,
+            0.9019776582717896
+          ]
+        ],
+        "pin_assignment": [
+          2,
+          1,
+          0
+        ],
+        "xy_errors_mm": [
+          0.26418472407385707,
+          0.39821714744903147,
+          0.06611010758206248
+        ]
+      },
+      "result": {
+        "robot": "r1_lite",
+        "policy_class": "R1LiteFeedbackPolicy",
+        "initial_torso_position": [
+          0.15,
+          0.0,
+          -0.39
+        ],
+        "physics_dt": 0.01,
+        "control_dt": 0.05,
+        "record_data": false,
+        "seed": 43,
+        "wall_seconds": 590.7696277999785,
+        "evaluation_limit_seconds": null,
+        "fast_physics": true,
+        "robot_solver_position_iterations": 32,
+        "robot_solver_velocity_iterations": 8,
+        "policy": "feedback",
+        "full_assembly": false,
+        "first_four_requested": true,
+        "first_four_success": false,
+        "first_three_success": true,
+        "assembly_success": null,
+        "simulation_seconds": 81.6,
+        "state": "failed",
+        "active_gear": 4,
+        "failure": "gear 4: central gear did not settle after meshing and release",
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.3693130612373352,
+          -0.029446493834257126,
+          0.9052533507347107
+        ],
+        "centre_quaternion": [
+          0.9442610144615173,
+          -0.03316791355609894,
+          -0.10628421604633331,
+          0.3097977340221405
+        ],
+        "carrier_position": [
+          0.45190513134002686,
+          0.019160225987434387,
+          0.9021156430244446
+        ],
+        "centre_error_mm": [
+          -82.59207153320312,
+          -48.606719970703125,
+          3.1377077102661133
+        ],
+        "centre_seat_error_mm": [
+          -82.55687713623047,
+          -48.610923767089844,
+          -5.862236022949219
+        ],
+        "right_ee_pose": [
+          0.45113879442214966,
+          0.0008656361023895442,
+          1.2041587829589844,
+          0.726472795009613,
+          0.02274448797106743,
+          0.6867307424545288,
+          -0.010982999578118324
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.45113879442214966,
+          0.0008656361023895442,
+          1.2041587829589844,
+          0.726472795009613,
+          0.02274448797106743,
+          0.6867307424545288,
+          -0.010982999578118324
+        ],
+        "active_arm_joints": [
+          1.5154651403427124,
+          2.0704121589660645,
+          -1.7643098831176758,
+          1.2087239027023315,
+          -0.5947103500366211,
+          1.541763424873352
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.4043547213077545,
+            0.04480521008372307,
+            0.9115905165672302
+          ],
+          [
+            0.4977952539920807,
+            0.047424882650375366,
+            0.9119477868080139
+          ],
+          [
+            0.45343077182769775,
+            -0.03487410396337509,
+            0.911848247051239
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9976341128349304,
+            0.002057665726169944,
+            -0.0027448085602372885,
+            0.0686621218919754
+          ],
+          [
+            0.9975645542144775,
+            0.001007254351861775,
+            -0.005850694607943296,
+            0.06949538737535477
+          ],
+          [
+            0.9525417685508728,
+            0.0034225790295749903,
+            0.00018331813043914735,
+            -0.30438855290412903
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          0.15859456360340118,
+          -13.228782653808594
+        ],
+        "right_arm_joints": [
+          1.5154651403427124,
+          2.0704121589660645,
+          -1.7643098831176758,
+          1.2087239027023315,
+          -0.5947103500366211,
+          1.541763424873352
+        ],
+        "pin_positions": [
+          [
+            0.4534069299697876,
+            -0.03481888025999069,
+            0.9021467566490173
+          ],
+          [
+            0.49824121594429016,
+            0.0472598597407341,
+            0.9022837281227112
+          ],
+          [
+            0.4040783643722534,
+            0.04463984817266464,
+            0.9019166827201843
+          ]
+        ],
+        "pin_assignment": [
+          2,
+          1,
+          0
+        ],
+        "xy_errors_mm": [
+          0.32205236493609846,
+          0.47551511670462787,
+          0.060150574427098036
+        ]
+      }
+    },
+    {
+      "result_path": "/tmp/r1lite-assembly/feedback-final-normal44-four.json",
+      "result_sha256": "20a56b78aae1aa3041f6250c9e6c4e77ce8d3883296ebe53fcf2dc40748babb0",
+      "note": "Fresh GPU episode, 128/128 solver; final controller with stock 100 N Lite jaw ceiling.",
+      "first_three_controller_matches_final": true,
+      "first_four_requested": true,
+      "fourth_controller_matches_final": true,
+      "sun_grip_effort_ceiling_n": 100.0,
+      "first_three_verified_at_seconds": 54.15,
+      "first_three_verification_snapshot": {
+        "simulation_seconds": 54.15,
+        "state": "hover",
+        "active_gear": 4,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.47916552424430847,
+          -0.3926513195037842,
+          0.9013784527778625
+        ],
+        "centre_quaternion": [
+          0.9999998807907104,
+          -5.836214404553175e-05,
+          -0.0005082363495603204,
+          9.327385669166688e-06
+        ],
+        "carrier_position": [
+          0.4613666236400604,
+          -8.950526535045356e-05,
+          0.9018152356147766
+        ],
+        "centre_error_mm": [
+          17.798900604248047,
+          -392.56182861328125,
+          -0.4367828369140625
+        ],
+        "centre_seat_error_mm": [
+          17.80799102783203,
+          -392.5628662109375,
+          -9.436786651611328
+        ],
+        "right_ee_pose": [
+          0.573424756526947,
+          -0.3863658905029297,
+          1.1936547756195068,
+          0.7542280554771423,
+          -0.009243578650057316,
+          0.6541208028793335,
+          -0.05639623478055
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.573424756526947,
+          -0.3863658905029297,
+          1.1936547756195068,
+          0.7542280554771423,
+          -0.009243578650057316,
+          0.6541208028793335,
+          -0.05639623478055
+        ],
+        "active_arm_joints": [
+          -0.3571872115135193,
+          1.2289234399795532,
+          -1.0078816413879395,
+          0.6750744581222534,
+          0.12785129249095917,
+          -0.2177407592535019
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.5080748796463013,
+            0.026941366493701935,
+            0.91152024269104
+          ],
+          [
+            0.4145442247390747,
+            0.02687654085457325,
+            0.9114258289337158
+          ],
+          [
+            0.46141400933265686,
+            -0.05408816412091255,
+            0.911483108997345
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9986162781715393,
+            7.985781121533364e-05,
+            -0.002045449335128069,
+            0.05254847928881645
+          ],
+          [
+            0.9986183643341064,
+            -5.9138921642443165e-05,
+            -0.0020307789091020823,
+            0.05250982940196991
+          ],
+          [
+            0.9986544251441956,
+            -2.9507107683457434e-05,
+            0.0004782647592946887,
+            0.05185588076710701
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          -0.009842151775956154,
+          -0.06263070553541183
+        ],
+        "right_arm_joints": [
+          -0.3571872115135193,
+          1.2289234399795532,
+          -1.0078816413879395,
+          0.6750744581222534,
+          0.12785129249095917,
+          -0.2177407592535019
+        ],
+        "pin_positions": [
+          [
+            0.46140530705451965,
+            -0.054089490324258804,
+            0.9018216133117676
+          ],
+          [
+            0.5084474086761475,
+            0.026744239032268524,
+            0.9018596410751343
+          ],
+          [
+            0.41424745321273804,
+            0.026676734909415245,
+            0.9017645120620728
+          ]
+        ],
+        "pin_assignment": [
+          1,
+          2,
+          0
+        ],
+        "xy_errors_mm": [
+          0.4214701766613871,
+          0.3577649185899645,
+          0.008802752745395992
+        ]
+      },
+      "result": {
+        "robot": "r1_lite",
+        "policy_class": "R1LiteFeedbackPolicy",
+        "initial_torso_position": [
+          0.15,
+          0.0,
+          -0.39
+        ],
+        "physics_dt": 0.01,
+        "control_dt": 0.05,
+        "record_data": false,
+        "seed": 44,
+        "wall_seconds": 1020.3818092220463,
+        "evaluation_limit_seconds": null,
+        "fast_physics": false,
+        "robot_solver_position_iterations": 128,
+        "robot_solver_velocity_iterations": 128,
+        "policy": "feedback",
+        "full_assembly": false,
+        "first_four_requested": true,
+        "first_four_success": false,
+        "first_three_success": true,
+        "assembly_success": null,
+        "simulation_seconds": 76.75,
+        "state": "failed",
+        "active_gear": 4,
+        "failure": "gear 4: central gear left the table workspace",
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.3473733067512512,
+          0.025734353810548782,
+          0.7962127327919006
+        ],
+        "centre_quaternion": [
+          0.7725838422775269,
+          -0.13970071077346802,
+          -0.5923020839691162,
+          0.18104131519794464
+        ],
+        "carrier_position": [
+          0.46527013182640076,
+          0.01056461501866579,
+          0.9018123745918274
+        ],
+        "centre_error_mm": [
+          -117.8968276977539,
+          15.16973876953125,
+          -105.59963989257812
+        ],
+        "centre_seat_error_mm": [
+          -117.88773345947266,
+          15.168686866760254,
+          -114.59964752197266
+        ],
+        "right_ee_pose": [
+          0.45761004090309143,
+          0.0006942522595636547,
+          1.158596158027649,
+          0.7227364182472229,
+          0.030178066343069077,
+          0.6896330714225769,
+          -0.033873822540044785
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.45761004090309143,
+          0.0006942522595636547,
+          1.158596158027649,
+          0.7227364182472229,
+          0.030178066343069077,
+          0.6896330714225769,
+          -0.033873822540044785
+        ],
+        "active_arm_joints": [
+          1.4291743040084839,
+          2.072774887084961,
+          -1.5804084539413452,
+          0.9935640096664429,
+          -0.581089437007904,
+          1.4964697360992432
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.5125035643577576,
+            0.03660465404391289,
+            0.9115256667137146
+          ],
+          [
+            0.4189768433570862,
+            0.038506802171468735,
+            0.9114289283752441
+          ],
+          [
+            0.46408745646476746,
+            -0.043421413749456406,
+            0.9114850759506226
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.999388575553894,
+            0.00043429317884147167,
+            -0.0036709937267005444,
+            0.034768685698509216
+          ],
+          [
+            0.9995316863059998,
+            -0.0001745509507600218,
+            -0.004189332015812397,
+            0.030311204493045807
+          ],
+          [
+            0.9993912577629089,
+            -0.00045308645348995924,
+            -0.004829960409551859,
+            0.03454802557826042
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          -0.544891893863678,
+          0.22150515019893646
+        ],
+        "right_arm_joints": [
+          1.4291743040084839,
+          2.072774887084961,
+          -1.5804084539413452,
+          0.9935640096664429,
+          -0.581089437007904,
+          1.4964697360992432
+        ],
+        "pin_positions": [
+          [
+            0.46417373418807983,
+            -0.04342425614595413,
+            0.9018175601959229
+          ],
+          [
+            0.5129045248031616,
+            0.03640279546380043,
+            0.9018574357032776
+          ],
+          [
+            0.418724000453949,
+            0.038315385580062866,
+            0.9017621278762817
+          ]
+        ],
+        "pin_assignment": [
+          1,
+          2,
+          0
+        ],
+        "xy_errors_mm": [
+          0.4489055136218667,
+          0.31712750205770135,
+          0.08632452954770997
+        ]
+      }
+    },
+    {
+      "result_path": "/tmp/r1lite-assembly/feedback-final-normal44-first3.json",
+      "result_sha256": "bfcfab72cceb771c8efdb5254d635cd1f7abbded385e63e6d4c1953c79cf0fae",
+      "note": "Fresh GPU episode, 128/128 solver; stopped after first-three verification and parking.",
+      "first_three_controller_matches_final": true,
+      "first_four_requested": false,
+      "fourth_controller_matches_final": false,
+      "sun_grip_effort_ceiling_n": null,
+      "first_three_verified_at_seconds": 54.1,
+      "first_three_verification_snapshot": {
+        "simulation_seconds": 54.1,
+        "state": "park",
+        "active_gear": 3,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.4791536033153534,
+          -0.39265137910842896,
+          0.9013785123825073
+        ],
+        "centre_quaternion": [
+          0.9999998807907104,
+          -5.647305806633085e-05,
+          -0.0005081524723209441,
+          9.237388439942151e-06
+        ],
+        "carrier_position": [
+          0.46135467290878296,
+          -8.935993537306786e-05,
+          0.9018152952194214
+        ],
+        "centre_error_mm": [
+          17.798931121826172,
+          -392.5620422363281,
+          -0.4367828369140625
+        ],
+        "centre_seat_error_mm": [
+          17.808019638061523,
+          -392.5630798339844,
+          -9.436786651611328
+        ],
+        "right_ee_pose": [
+          0.5695189237594604,
+          -0.38474056124687195,
+          1.193286657333374,
+          0.7598745226860046,
+          -0.011378437280654907,
+          0.6450885534286499,
+          -0.07951109111309052
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.5695189237594604,
+          -0.38474056124687195,
+          1.193286657333374,
+          0.7598745226860046,
+          -0.011378437280654907,
+          0.6450885534286499,
+          -0.07951109111309052
+        ],
+        "active_arm_joints": [
+          -0.3485518991947174,
+          1.207046389579773,
+          -0.9761316180229187,
+          0.6365557312965393,
+          0.09000720083713531,
+          -0.1798500269651413
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.508064329624176,
+            0.026938805356621742,
+            0.9115212559700012
+          ],
+          [
+            0.41453224420547485,
+            0.02687414549291134,
+            0.911425769329071
+          ],
+          [
+            0.4614003002643585,
+            -0.05409172549843788,
+            0.9114835262298584
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9986085891723633,
+            0.00020769343245774508,
+            -0.001996184466406703,
+            0.052696190774440765
+          ],
+          [
+            0.9986109137535095,
+            6.959689198993146e-05,
+            -0.0020413852762430906,
+            0.0526503250002861
+          ],
+          [
+            0.9986559748649597,
+            0.0001410134427715093,
+            0.00037974276347085834,
+            0.051827188581228256
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          -0.021808644756674767,
+          -0.08558014780282974
+        ],
+        "right_arm_joints": [
+          -0.3485518991947174,
+          1.207046389579773,
+          -0.9761316180229187,
+          0.6365557312965393,
+          0.09000720083713531,
+          -0.1798500269651413
+        ],
+        "pin_positions": [
+          [
+            0.46139323711395264,
+            -0.054089345037937164,
+            0.9018216133117676
+          ],
+          [
+            0.5084354877471924,
+            0.026744281873106956,
+            0.9018597602844238
+          ],
+          [
+            0.41423556208610535,
+            0.026676982641220093,
+            0.9017645716667175
+          ]
+        ],
+        "pin_assignment": [
+          1,
+          2,
+          0
+        ],
+        "xy_errors_mm": [
+          0.41904381942003965,
+          0.35622110590338707,
+          0.007453501439158572
+        ]
+      },
+      "result": {
+        "robot": "r1_lite",
+        "policy_class": "R1LiteFeedbackPolicy",
+        "initial_torso_position": [
+          0.15,
+          0.0,
+          -0.39
+        ],
+        "physics_dt": 0.01,
+        "control_dt": 0.05,
+        "record_data": false,
+        "seed": 44,
+        "wall_seconds": 862.9435033330228,
+        "evaluation_limit_seconds": null,
+        "fast_physics": false,
+        "robot_solver_position_iterations": 128,
+        "robot_solver_velocity_iterations": 128,
+        "policy": "feedback",
+        "full_assembly": false,
+        "first_four_requested": false,
+        "first_four_success": false,
+        "first_three_success": true,
+        "assembly_success": null,
+        "simulation_seconds": 54.1,
+        "state": "park",
+        "active_gear": 3,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.4791536033153534,
+          -0.39265137910842896,
+          0.9013785123825073
+        ],
+        "centre_quaternion": [
+          0.9999998807907104,
+          -5.647305806633085e-05,
+          -0.0005081524723209441,
+          9.237388439942151e-06
+        ],
+        "carrier_position": [
+          0.46135467290878296,
+          -8.935993537306786e-05,
+          0.9018152952194214
+        ],
+        "centre_error_mm": [
+          17.798931121826172,
+          -392.5620422363281,
+          -0.4367828369140625
+        ],
+        "centre_seat_error_mm": [
+          17.808019638061523,
+          -392.5630798339844,
+          -9.436786651611328
+        ],
+        "right_ee_pose": [
+          0.5695189237594604,
+          -0.38474056124687195,
+          1.193286657333374,
+          0.7598745226860046,
+          -0.011378437280654907,
+          0.6450885534286499,
+          -0.07951109111309052
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.5695189237594604,
+          -0.38474056124687195,
+          1.193286657333374,
+          0.7598745226860046,
+          -0.011378437280654907,
+          0.6450885534286499,
+          -0.07951109111309052
+        ],
+        "active_arm_joints": [
+          -0.3485518991947174,
+          1.207046389579773,
+          -0.9761316180229187,
+          0.6365557312965393,
+          0.09000720083713531,
+          -0.1798500269651413
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.508064329624176,
+            0.026938805356621742,
+            0.9115212559700012
+          ],
+          [
+            0.41453224420547485,
+            0.02687414549291134,
+            0.911425769329071
+          ],
+          [
+            0.4614003002643585,
+            -0.05409172549843788,
+            0.9114835262298584
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9986085891723633,
+            0.00020769343245774508,
+            -0.001996184466406703,
+            0.052696190774440765
+          ],
+          [
+            0.9986109137535095,
+            6.959689198993146e-05,
+            -0.0020413852762430906,
+            0.0526503250002861
+          ],
+          [
+            0.9986559748649597,
+            0.0001410134427715093,
+            0.00037974276347085834,
+            0.051827188581228256
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          -0.021808644756674767,
+          -0.08558014780282974
+        ],
+        "right_arm_joints": [
+          -0.3485518991947174,
+          1.207046389579773,
+          -0.9761316180229187,
+          0.6365557312965393,
+          0.09000720083713531,
+          -0.1798500269651413
+        ],
+        "pin_positions": [
+          [
+            0.46139323711395264,
+            -0.054089345037937164,
+            0.9018216133117676
+          ],
+          [
+            0.5084354877471924,
+            0.026744281873106956,
+            0.9018597602844238
+          ],
+          [
+            0.41423556208610535,
+            0.026676982641220093,
+            0.9017645716667175
+          ]
+        ],
+        "pin_assignment": [
+          1,
+          2,
+          0
+        ],
+        "xy_errors_mm": [
+          0.41904381942003965,
+          0.35622110590338707,
+          0.007453501439158572
+        ]
+      }
+    },
+    {
+      "result_path": "/scratch/SM/AAAI_challenge/data/r1lite-validation/feedback-v14-fast44.json",
+      "result_sha256": "0aa1ff9f6d9fbe6a7eb9fcdbe41a9e1bed2e16b01bb2f3a55400fb0024b79ad0",
+      "note": "Fresh GPU episode with all cameras and HDF5 recording, 32/8 solver; final controller including 100 N fourth-gear effort.",
+      "first_three_controller_matches_final": true,
+      "first_four_requested": true,
+      "fourth_controller_matches_final": true,
+      "sun_grip_effort_ceiling_n": 100.0,
+      "first_three_verified_at_seconds": 53.95,
+      "first_three_verification_snapshot": {
+        "simulation_seconds": 53.95,
+        "state": "hover",
+        "active_gear": 4,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.47869372367858887,
+          -0.39185789227485657,
+          0.9011747241020203
+        ],
+        "centre_quaternion": [
+          0.9999999403953552,
+          -5.899677853449248e-05,
+          0.0002970124769490212,
+          3.827905311482027e-05
+        ],
+        "carrier_position": [
+          0.46066486835479736,
+          -0.00046259857481345534,
+          0.9018521308898926
+        ],
+        "centre_error_mm": [
+          18.028854370117188,
+          -391.3952941894531,
+          -0.6774067878723145
+        ],
+        "centre_seat_error_mm": [
+          17.9952392578125,
+          -391.40728759765625,
+          -9.677350997924805
+        ],
+        "right_ee_pose": [
+          0.573615550994873,
+          -0.38639581203460693,
+          1.1935750246047974,
+          0.7542007565498352,
+          -0.009250725619494915,
+          0.6541479229927063,
+          -0.05644543841481209
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.573615550994873,
+          -0.38639581203460693,
+          1.1935750246047974,
+          0.7542007565498352,
+          -0.009250725619494915,
+          0.6541479229927063,
+          -0.05644543841481209
+        ],
+        "active_arm_joints": [
+          -0.35722965002059937,
+          1.2291303873062134,
+          -1.0080616474151611,
+          0.6749668121337891,
+          0.1278170943260193,
+          -0.21769918501377106
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 3,
+        "gear_positions": [
+          [
+            0.5074508786201477,
+            0.026312170550227165,
+            0.9117215871810913
+          ],
+          [
+            0.4139932692050934,
+            0.026590386405587196,
+            0.9117207527160645
+          ],
+          [
+            0.460491806268692,
+            -0.05469351261854172,
+            0.9116737842559814
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9986169934272766,
+            0.008827071636915207,
+            -0.0033018041867762804,
+            0.05172250419855118
+          ],
+          [
+            0.9986451864242554,
+            0.0035429499112069607,
+            -0.0005665270728059113,
+            0.05191240459680557
+          ],
+          [
+            0.9987229108810425,
+            0.013002130202949047,
+            -0.0010792703833431005,
+            0.048808690160512924
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          -0.21451103687286377,
+          -0.40381231904029846
+        ],
+        "right_arm_joints": [
+          -0.35722965002059937,
+          1.2291303873062134,
+          -1.0080616474151611,
+          0.6749668121337891,
+          0.1278170943260193,
+          -0.21769918501377106
+        ],
+        "pin_positions": [
+          [
+            0.46052899956703186,
+            -0.05446238070726395,
+            0.9019245505332947
+          ],
+          [
+            0.5078318119049072,
+            0.02621855027973652,
+            0.9016405344009399
+          ],
+          [
+            0.4136327803134918,
+            0.026456031948328018,
+            0.9019919037818909
+          ]
+        ],
+        "pin_assignment": [
+          1,
+          2,
+          0
+        ],
+        "xy_errors_mm": [
+          0.3922689356841147,
+          0.3847120678983629,
+          0.23410531866829842
+        ]
+      },
+      "result": {
+        "camera_recording": "/scratch/SM/AAAI_challenge/data/r1lite-validation/fail/fail_score4_feedback-v14-fast44.hdf5",
+        "camera_validation_harness": true,
+        "robot": "r1_lite",
+        "policy_class": "R1LiteFeedbackPolicy",
+        "initial_torso_position": [
+          0.15,
+          0.0,
+          -0.39
+        ],
+        "physics_dt": 0.01,
+        "control_dt": 0.05,
+        "record_data": true,
+        "seed": 44,
+        "wall_seconds": 701.4695423678495,
+        "evaluation_limit_seconds": null,
+        "fast_physics": true,
+        "robot_solver_position_iterations": 32,
+        "robot_solver_velocity_iterations": 8,
+        "policy": "feedback",
+        "full_assembly": false,
+        "first_four_requested": true,
+        "first_four_success": true,
+        "first_three_success": true,
+        "assembly_success": null,
+        "simulation_seconds": 82.75,
+        "state": "park",
+        "active_gear": 4,
+        "failure": null,
+        "verified_first_three": true,
+        "verified_fourth": true,
+        "centre_seated": true,
+        "centre_position": [
+          0.4602373242378235,
+          0.024815158918499947,
+          0.9104494452476501
+        ],
+        "centre_quaternion": [
+          0.9983075261116028,
+          -2.058918289549183e-05,
+          0.002012878190726042,
+          0.05812041833996773
+        ],
+        "carrier_position": [
+          0.46080541610717773,
+          0.0215742364525795,
+          0.9018213152885437
+        ],
+        "centre_error_mm": [
+          -0.568091869354248,
+          3.240922451019287,
+          8.628129959106445
+        ],
+        "centre_seat_error_mm": [
+          -0.5824267864227295,
+          3.273513078689575,
+          -0.3718137741088867
+        ],
+        "right_ee_pose": [
+          0.5698143839836121,
+          -0.3847516179084778,
+          1.193163275718689,
+          0.7598046660423279,
+          -0.011393146589398384,
+          0.6451684832572937,
+          -0.07952709496021271
+        ],
+        "active_arm": "right",
+        "active_ee_pose": [
+          0.5698143839836121,
+          -0.3847516179084778,
+          1.193163275718689,
+          0.7598046660423279,
+          -0.011393146589398384,
+          0.6451684832572937,
+          -0.07952709496021271
+        ],
+        "active_arm_joints": [
+          -0.3485604226589203,
+          1.2071324586868286,
+          -0.9762826561927795,
+          0.6365369558334351,
+          0.0899999588727951,
+          -0.17982490360736847
+        ],
+        "pick_attempt": 1,
+        "insert_attempt": 1,
+        "seated": [
+          true,
+          true,
+          true
+        ],
+        "planetary_score": 3,
+        "assembly_score": 4,
+        "gear_positions": [
+          [
+            0.5062200427055359,
+            0.05045032873749733,
+            0.9116113781929016
+          ],
+          [
+            0.41294944286346436,
+            0.04618854820728302,
+            0.9118252992630005
+          ],
+          [
+            0.4633125364780426,
+            -0.03247892111539841,
+            0.9113056063652039
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9969061017036438,
+            0.01752370037138462,
+            0.0004675978852901608,
+            -0.07662095129489899
+          ],
+          [
+            0.9982072114944458,
+            0.015021434053778648,
+            0.00477411225438118,
+            0.05773858726024628
+          ],
+          [
+            0.9991578459739685,
+            0.003675485262647271,
+            0.003119704546406865,
+            0.04074457660317421
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          0.0,
+          14.75048828125,
+          13.045906066894531
+        ],
+        "right_arm_joints": [
+          -0.3485604226589203,
+          1.2071324586868286,
+          -0.9762826561927795,
+          0.6365369558334351,
+          0.0899999588727951,
+          -0.17982490360736847
+        ],
+        "pin_positions": [
+          [
+            0.463256299495697,
+            -0.03236975148320198,
+            0.9016220569610596
+          ],
+          [
+            0.5066404342651367,
+            0.05048440769314766,
+            0.9018529653549194
+          ],
+          [
+            0.4125376343727112,
+            0.0462084636092186,
+            0.9019874334335327
+          ]
+        ],
+        "pin_assignment": [
+          1,
+          2,
+          0
+        ],
+        "xy_errors_mm": [
+          0.42177061550319195,
+          0.41228978079743683,
+          0.1228031178470701
+        ]
+      }
+    }
+  ],
+  "original_policy_baselines": [
+    {
+      "result_path": "/tmp/r1lite-assembly/legacy-normal44.json",
+      "result_sha256": "9ff73251ed89531085a48030d3c36c1bece40d52d92039c5c518268ff34a4b07",
+      "note": "Original timed Lite policy and original torso (0.4, -0.66, -0.8), stopped at the old fourth-gear endpoint. The comparison includes both posture and controller changes.",
+      "first_three_controller_matches_final": false,
+      "first_four_requested": true,
+      "fourth_controller_matches_final": false,
+      "sun_grip_effort_ceiling_n": null,
+      "first_three_verified_at_seconds": null,
+      "first_three_verification_snapshot": null,
+      "result": {
+        "seed": 44,
+        "fast_physics": false,
+        "robot_solver_position_iterations": 128,
+        "robot_solver_velocity_iterations": 128,
+        "policy": "legacy",
+        "full_assembly": false,
+        "first_four_success": false,
+        "first_three_success": false,
+        "assembly_success": null,
+        "simulation_seconds": 30.2,
+        "state": "legacy",
+        "active_gear": null,
+        "failure": null,
+        "verified_first_three": false,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.4962124228477478,
+          -0.3927919566631317,
+          0.9014392495155334
+        ],
+        "centre_quaternion": [
+          0.9995138645172119,
+          -1.920759677886963e-05,
+          0.0009128890815190971,
+          -0.031164249405264854
+        ],
+        "carrier_position": [
+          0.6358321905136108,
+          0.4929899573326111,
+          0.9017034769058228
+        ],
+        "centre_error_mm": [
+          -139.61976623535156,
+          -885.7818603515625,
+          -0.26422739028930664
+        ],
+        "centre_seat_error_mm": [
+          -139.6362762451172,
+          -885.78173828125,
+          -9.264230728149414
+        ],
+        "right_ee_pose": [
+          0.53033846616745,
+          -0.35869261622428894,
+          1.1347875595092773,
+          0.7335209250450134,
+          -0.0150788938626647,
+          0.6792118549346924,
+          0.019767099991440773
+        ],
+        "seated": [
+          false,
+          false,
+          false
+        ],
+        "planetary_score": 0,
+        "assembly_score": 0,
+        "gear_positions": [
+          [
+            0.6709375381469727,
+            0.08615732192993164,
+            0.9011320471763611
+          ],
+          [
+            0.6078640222549438,
+            0.6062551736831665,
+            0.9012559652328491
+          ],
+          [
+            0.6571469306945801,
+            -0.38042834401130676,
+            0.9011492133140564
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.9995084404945374,
+            -1.9536733816494234e-05,
+            0.0009097547153942287,
+            -0.03133687749505043
+          ],
+          [
+            0.999998927116394,
+            6.873216989333741e-06,
+            0.0009103940101340413,
+            -0.001056502340361476
+          ],
+          [
+            0.9995851516723633,
+            -1.6700591004337184e-05,
+            0.0009090945823118091,
+            -0.02878701686859131
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          null,
+          null,
+          null
+        ],
+        "right_arm_joints": [
+          -0.14263547956943512,
+          1.3080090284347534,
+          -0.9875421524047852,
+          0.639492392539978,
+          0.09075723588466644,
+          -0.16571059823036194
+        ],
+        "pin_positions": [
+          [
+            0.628889262676239,
+            0.4394381642341614,
+            0.9017151594161987
+          ],
+          [
+            0.6859869360923767,
+            0.5135117173194885,
+            0.901611864566803
+          ],
+          [
+            0.5925689339637756,
+            0.5256233215332031,
+            0.9017834663391113
+          ]
+        ],
+        "pin_assignment": [
+          0,
+          1,
+          2
+        ],
+        "xy_errors_mm": [
+          355.7743728160858,
+          121.26227468252182,
+          908.3501100540161
+        ]
+      }
+    },
+    {
+      "result_path": "/tmp/r1lite-assembly/legacy-fast44.json",
+      "result_sha256": "78b4e8278ccceb3d7749dedac5387e807cf6d5c95ceeb3f3c897df9c1a645533",
+      "note": "Original timed Lite policy and original torso (0.4, -0.66, -0.8), stopped at the old fourth-gear endpoint. The comparison includes both posture and controller changes.",
+      "first_three_controller_matches_final": false,
+      "first_four_requested": true,
+      "fourth_controller_matches_final": false,
+      "sun_grip_effort_ceiling_n": null,
+      "first_three_verified_at_seconds": null,
+      "first_three_verification_snapshot": null,
+      "result": {
+        "seed": 44,
+        "fast_physics": true,
+        "robot_solver_position_iterations": 32,
+        "robot_solver_velocity_iterations": 8,
+        "policy": "legacy",
+        "full_assembly": false,
+        "first_four_success": false,
+        "first_three_success": false,
+        "assembly_success": null,
+        "simulation_seconds": 30.2,
+        "state": "legacy",
+        "active_gear": null,
+        "failure": null,
+        "verified_first_three": false,
+        "verified_fourth": false,
+        "centre_seated": false,
+        "centre_position": [
+          0.539185106754303,
+          -0.6968337893486023,
+          0.9010643362998962
+        ],
+        "centre_quaternion": [
+          0.9995591044425964,
+          -4.237625398673117e-05,
+          0.0005907341837882996,
+          -0.029682612046599388
+        ],
+        "carrier_position": [
+          0.6565977931022644,
+          0.4818975031375885,
+          0.9013688564300537
+        ],
+        "centre_error_mm": [
+          -117.41268920898438,
+          -1178.7313232421875,
+          -0.3045201301574707
+        ],
+        "centre_seat_error_mm": [
+          -117.42335510253906,
+          -1178.731689453125,
+          -9.304523468017578
+        ],
+        "right_ee_pose": [
+          0.529662549495697,
+          -0.3654962182044983,
+          1.1372650861740112,
+          0.7366587519645691,
+          -0.012387716211378574,
+          0.6761502623558044,
+          -0.0010734864044934511
+        ],
+        "seated": [
+          false,
+          false,
+          false
+        ],
+        "planetary_score": 0,
+        "assembly_score": 0,
+        "gear_positions": [
+          [
+            0.5846458673477173,
+            0.04065665602684021,
+            0.9009748101234436
+          ],
+          [
+            0.5556913614273071,
+            0.5689497590065002,
+            0.9009842872619629
+          ],
+          [
+            0.5443705916404724,
+            0.11111913621425629,
+            0.9318458437919617
+          ]
+        ],
+        "gear_quaternions": [
+          [
+            0.999999463558197,
+            -2.4071670850389637e-05,
+            0.0005926501471549273,
+            -0.0007507195114158094
+          ],
+          [
+            0.9999317526817322,
+            -1.64725242939312e-05,
+            0.0005918936803936958,
+            0.01165852416306734
+          ],
+          [
+            0.6414133310317993,
+            0.5996677875518799,
+            0.37534254789352417,
+            0.29682549834251404
+          ]
+        ],
+        "mesh_phase_errors_deg": [
+          null,
+          null,
+          null
+        ],
+        "right_arm_joints": [
+          -0.18369446694850922,
+          1.3028881549835205,
+          -0.9909246563911438,
+          0.638347327709198,
+          0.08906587213277817,
+          -0.16599498689174652
+        ],
+        "pin_positions": [
+          [
+            0.6491732597351074,
+            0.4284103512763977,
+            0.901380181312561
+          ],
+          [
+            0.7069352269172668,
+            0.5019671320915222,
+            0.9013081789016724
+          ],
+          [
+            0.6136298775672913,
+            0.5149188041687012,
+            0.9014182686805725
+          ]
+        ],
+        "pin_assignment": [
+          0,
+          1,
+          2
+        ],
+        "xy_errors_mm": [
+          393.08613538742065,
+          165.4127538204193,
+          409.69622135162354
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "Two seeded layouts are targeted checks, not a population success-rate estimate or a guarantee.",
+    "First-three success requires all three gears seated after parking and still seated at the recorded endpoint.",
+    "The central fourth gear is not yet reliable; failures and parameter variants are retained in the trial records.",
+    "Checkpoint continuations were diagnostic only and are excluded from fresh-trial totals.",
+    "Later ring placement and the separate recovery policy are unvalidated with the new torso posture.",
+    "Camera-disabled and camera-enabled runs have different warmup paths. Concurrent-run wall times are not throughput benchmarks.",
+    "The policy uses simulator poses; no physical-robot success or camera-only perception performance is established."
+  ],
+  "source_sha256": {
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_lite_feedback_policy.py": "9d89735c7dd8b10e9aee5ccebfa5a1b85f3ccf455faaa571703843f9a8b951f4",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_lite_rule_policy.py": "789b5fab7398ee57921ae93c80bda264ba1ae6be365dbde66400a22fd1df0c63",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_planetary.py": "b8e0db224eb993087b712d472085074bd4a6a03fcc652c1d8bacfdee5384e45a",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_sun.py": "8da7bfe209c7e2257282ce3f1ad46bb761a3c8a3cfd068eb18458dc5a6933aa2",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_rule_policy.py": "119023bd404dfc24614396abf5ddf9d355f2cea0ac72cbdc4f50012bdd8bf0fc",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/galaxea_robots.py": "9807d5960fd09df3d5d1b17c8ef58f6e39731cd6db408acc18ab5ccb2ad19867",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/robot_bundles.py": "0540920673f8ae5c6cf5b9a42856b20b6e1f8afc806099e5477aed14d5657eae",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/physics_profiles.py": "baec261440d551e2cf32082fa00fca089e6b9b34273289f745247ebe43a06b98",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/gearbox_geometry.py": "70e38ddc3eeaed6106aef8f33a8e3007d4a3c49d12a252b7734c590dedded0bd",
+    "scripts/evaluate_r1pro.py": "7fa025f5aa931111ad4db0730093ff48b1266e447a7fe5cb94fc3c32d02c5c97",
+    "scripts/test_r1lite_feedback.py": "8eb01b6104a7feeccce8d8f3be4bf9f29332845e45c94825c0c4d7f3d2f2ce43",
+    "scripts/test_r1pro_planetary.py": "bcab67a31927ef5814e405f48cc15458fde49ccd480b5c3ec083468f103257fd"
+  },
+  "recording_validation": {
+    "hdf5": "/scratch/SM/AAAI_challenge/data/r1lite-validation/fail/fail_score4_feedback-v14-fast44.hdf5",
+    "video": "/scratch/SM/AAAI_challenge/data/r1lite-validation/r1lite-feedback-fast44.mp4",
+    "camera_order": [
+      "head",
+      "left_hand",
+      "right_hand"
+    ],
+    "frames": 1655,
+    "attributes": {
+      "control_dt": 0.05,
+      "physics_dt": 0.01,
+      "robot_solver_position_iterations": 32,
+      "robot_solver_velocity_iterations": 8,
+      "sim": true,
+      "success": false
+    },
+    "actions": {
+      "left_arm_action": {
+        "shape": [
+          1655,
+          6
+        ],
+        "finite": true
+      },
+      "left_gripper_action": {
+        "shape": [
+          1655
+        ],
+        "finite": true
+      },
+      "right_arm_action": {
+        "shape": [
+          1655,
+          6
+        ],
+        "finite": true
+      },
+      "right_gripper_action": {
+        "shape": [
+          1655
+        ],
+        "finite": true
+      }
+    },
+    "cameras": {
+      "head": {
+        "rgb_shape": [
+          1655,
+          240,
+          320,
+          3
+        ],
+        "rgb_dtype": "uint8",
+        "depth_shape": [
+          1655,
+          240,
+          320
+        ],
+        "depth_dtype": "float32",
+        "sample_rgb_range": [
+          24,
+          227
+        ],
+        "sample_finite_depth_fraction": 1.0
+      },
+      "left_hand": {
+        "rgb_shape": [
+          1655,
+          240,
+          320,
+          3
+        ],
+        "rgb_dtype": "uint8",
+        "depth_shape": [
+          1655,
+          240,
+          320
+        ],
+        "depth_dtype": "float32",
+        "sample_rgb_range": [
+          21,
+          226
+        ],
+        "sample_finite_depth_fraction": 1.0
+      },
+      "right_hand": {
+        "rgb_shape": [
+          1655,
+          240,
+          320,
+          3
+        ],
+        "rgb_dtype": "uint8",
+        "depth_shape": [
+          1655,
+          240,
+          320
+        ],
+        "depth_dtype": "float32",
+        "sample_rgb_range": [
+          24,
+          226
+        ],
+        "sample_finite_depth_fraction": 1.0
+      }
+    },
+    "score_min": 0,
+    "score_max": 4,
+    "last_score": 4,
+    "timestamp_step_seconds": 0.05,
+    "first_time": 0.05000000074505806,
+    "last_time": 82.75,
+    "all_checks_passed": true,
+    "reset_rerenders": 5,
+    "extra_recorded_warmup_frames": 0
+  }
+}

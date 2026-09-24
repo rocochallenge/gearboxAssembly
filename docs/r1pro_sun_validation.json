@@ -1,0 +1,598 @@
+{
+  "date": "2026-09-17",
+  "base_commit": "9f039d4265933f90cb5e8500237c0a1bfbe57ce2",
+  "runtime": "Isaac Sim 5.1, NVIDIA RTX A6000, one environment per process",
+  "method": "Production physics, randomization and action pipeline; cameras and HDF5 recording disabled. GPU runs are the target-platform validation. Final first-three placement behavior is preserved, without additional tooth-phase preparation.",
+  "criteria": {
+    "first_three_xy_tolerance_mm": 2,
+    "first_three_absolute_z_tolerance_mm": 12,
+    "central_xy_tolerance_mm": 5,
+    "central_absolute_z_tolerance_mm": 5,
+    "central_local_support_height_mm": 9,
+    "tilt_tolerance_rad": 0.05,
+    "completion": "All four gears pass pose checks after release, retreat and parking; planetary_complete and sun_complete must both be true.",
+    "scoring_correction": "The central-gear height is measured from the actual carrier support surface, 9 mm above its origin. The old zero-height target required intersection with the plate. The 5 mm tolerance itself was not enlarged; a regression test intersects the committed USD meshes to verify the support height."
+  },
+  "regression_checks": {
+    "passed": 40,
+    "command": "source scripts/env.sh && python scripts/test_r1pro_planetary.py --headless",
+    "other_checks": [
+      "Python compilation",
+      "flake8 E9,F63,F7,F82",
+      "git diff --check"
+    ]
+  },
+  "final_controller_runs": [
+    {
+      "seed": 44,
+      "first_three_success": true,
+      "first_four_success": true,
+      "assembly_success": null,
+      "simulation_seconds": 102.7,
+      "failure": null,
+      "verified_first_three": true,
+      "verified_fourth": true,
+      "centre_seated": true,
+      "centre_position": [
+        0.43605318665504456,
+        0.03181810677051544,
+        0.9101563096046448
+      ],
+      "centre_quaternion": [
+        0.9357833862304688,
+        0.00028505997033789754,
+        0.0006303266272880137,
+        0.3525747060775757
+      ],
+      "carrier_position": [
+        0.43570655584335327,
+        0.029342299327254295,
+        0.9016566872596741
+      ],
+      "centre_error_mm": [
+        0.3466308116912842,
+        2.4758074283599854,
+        8.499622344970703
+      ],
+      "centre_seat_error_mm": [
+        0.33533573150634766,
+        2.475693702697754,
+        -0.5003809928894043
+      ],
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "assembly_score": 4,
+      "gear_positions": [
+        [
+          0.48221850395202637,
+          0.05680305138230324,
+          0.9112669229507446
+        ],
+        [
+          0.38879555463790894,
+          0.05593443289399147,
+          0.9114338159561157
+        ],
+        [
+          0.4363088607788086,
+          -0.024482520297169685,
+          0.911379873752594
+        ]
+      ],
+      "gear_quaternions": [
+        [
+          0.9922565221786499,
+          -0.0002641723840497434,
+          -0.00026190970675088465,
+          -0.12420401722192764
+        ],
+        [
+          0.9547811150550842,
+          -0.004930196329951286,
+          0.0048568095080554485,
+          -0.29722893238067627
+        ],
+        [
+          0.8927614688873291,
+          -0.005970504600554705,
+          0.006214073859155178,
+          0.4504470229148865
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.4362356960773468,
+          -0.024655109271407127,
+          0.9016566872596741
+        ],
+        [
+          0.48254165053367615,
+          0.05660253018140793,
+          0.9015976190567017
+        ],
+        [
+          0.38834625482559204,
+          0.05567949265241623,
+          0.9017156958580017
+        ]
+      ],
+      "pin_assignment": [
+        1,
+        2,
+        0
+      ],
+      "xy_errors_mm": [
+        0.3803057479672134,
+        0.5165896145626903,
+        0.18745672423392534
+      ],
+      "method": "Fresh reset and complete first-four episode; production evaluator and final controller.",
+      "device": "cuda:0",
+      "command": "source scripts/env.sh && ROCO_ROBOT_BUNDLE=r1_pro python scripts/evaluate_r1pro.py --headless --seed 44 --first-four --output /tmp/r1pro-four-44.json",
+      "source_result_sha256": "3d3aa499bc9cef1f5e143fdfd5f55eba2c2cd7b28d3ac781b7dcfd1020e7cf8c",
+      "trace_sha256": "a2381569ed5656c400eb9e80bb653158d33da157d12f20a9b268a6db1e08d315",
+      "first_three_verified_seconds": 76.5,
+      "first_three_xy_errors_mm_at_handoff": [
+        0.31449052039533854,
+        0.32454627216793597,
+        0.060424586990848184
+      ]
+    },
+    {
+      "seed": 43,
+      "first_three_success": true,
+      "first_four_success": true,
+      "assembly_success": null,
+      "simulation_seconds": 98.5,
+      "failure": null,
+      "verified_first_three": true,
+      "verified_fourth": true,
+      "centre_seated": true,
+      "centre_position": [
+        0.4470767378807068,
+        0.03735200688242912,
+        0.9101738333702087
+      ],
+      "centre_quaternion": [
+        0.9954363703727722,
+        -1.8896562323789112e-05,
+        0.00019646756118163466,
+        0.09542756527662277
+      ],
+      "carrier_position": [
+        0.4479673206806183,
+        0.035597220063209534,
+        0.9016708135604858
+      ],
+      "centre_error_mm": [
+        -0.890582799911499,
+        1.7547868490219116,
+        8.503019332885742
+      ],
+      "centre_seat_error_mm": [
+        -0.8932650089263916,
+        1.7537586688995361,
+        -0.49698352813720703
+      ],
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "assembly_score": 4,
+      "gear_positions": [
+        [
+          0.40043890476226807,
+          0.0609252005815506,
+          0.9113948345184326
+        ],
+        [
+          0.4938175678253174,
+          0.0641636773943901,
+          0.9113246202468872
+        ],
+        [
+          0.44985273480415344,
+          -0.018334798514842987,
+          0.9113451838493347
+        ]
+      ],
+      "gear_quaternions": [
+        [
+          0.9570809006690979,
+          0.0006567881791852415,
+          0.005664102267473936,
+          -0.28976449370384216
+        ],
+        [
+          0.9937682747840881,
+          -0.00020829735149163753,
+          0.002801288152113557,
+          -0.11142971366643906
+        ],
+        [
+          0.9687274098396301,
+          -0.0011189604410901666,
+          0.0023726054932922125,
+          0.2481135129928589
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.44979870319366455,
+          -0.018371716141700745,
+          0.9016764163970947
+        ],
+        [
+          0.49413132667541504,
+          0.06397917121648788,
+          0.9016538858413696
+        ],
+        [
+          0.39998552203178406,
+          0.06078442931175232,
+          0.9016821980476379
+        ]
+      ],
+      "pin_assignment": [
+        2,
+        1,
+        0
+      ],
+      "xy_errors_mm": [
+        0.47473408631049097,
+        0.3639878414105624,
+        0.0654394825687632
+      ],
+      "method": "GPU continuation from a naturally assembled first-three checkpoint at 73.95 simulated seconds. Includes the complete fourth-gear pickup, transport, meshing, release, retreat and parking. No gear poses were edited; this is not a fresh whole-episode run.",
+      "device": "cuda:0",
+      "command": "source scripts/env.sh && ROCO_ROBOT_BUNDLE=r1_pro python /tmp/r1pro-sun/diagnose.py --headless --seed 43 --first-four --checkpoint-in /tmp/r1pro-sun/start43.pt --output /tmp/r1pro-sun/stable-four-replay43.json",
+      "source_result_sha256": "6170b8572a6b3267a441a6b2dd8763f8a8da8e47e783155d92d4b0d5571d3d14",
+      "trace_sha256": "72f1a4661b4bb61d7d396c6c9afe06cb6ada3b001d2f9f53d2540ab029381197"
+    }
+  ],
+  "timed_fourth_baseline": {
+    "seed": 42,
+    "policy": "planetary",
+    "endpoint": "after fourth-gear release and retreat; baseline stopped before ring assembly",
+    "first_three_success": true,
+    "first_four_success": false,
+    "simulation_seconds": 104.0,
+    "state": "park",
+    "active_gear": 3,
+    "failure": null,
+    "verified_first_three": true,
+    "verified_fourth": false,
+    "centre_seated": false,
+    "centre_position": [
+      0.4865531623363495,
+      0.013907288201153278,
+      0.9243592023849487
+    ],
+    "centre_quaternion": [
+      0.8128088116645813,
+      0.24323135614395142,
+      0.3208160400390625,
+      0.4210195243358612
+    ],
+    "carrier_position": [
+      0.5001332759857178,
+      0.009428166784346104,
+      0.9016450643539429
+    ],
+    "centre_error_mm": [
+      -13.580113410949707,
+      4.479121208190918,
+      22.71413803100586
+    ],
+    "right_ee_pose": [
+      0.5401198863983154,
+      -0.4008488655090332,
+      1.2277488708496094,
+      0.30018216371536255,
+      0.01810864917933941,
+      -0.030245209112763405,
+      0.9532302618026733
+    ],
+    "seated": [
+      true,
+      true,
+      true
+    ],
+    "planetary_score": 3,
+    "assembly_score": 3,
+    "gear_positions": [
+      [
+        0.5389851331710815,
+        0.04718669876456261,
+        0.911372184753418
+      ],
+      [
+        0.4480721056461334,
+        0.02402552217245102,
+        0.9114112257957458
+      ],
+      [
+        0.513576328754425,
+        -0.04299981892108917,
+        0.9113419651985168
+      ]
+    ],
+    "pin_positions": [
+      [
+        0.5134254693984985,
+        -0.04291033372282982,
+        0.901645302772522
+      ],
+      [
+        0.5391871929168701,
+        0.04699729010462761,
+        0.9016234278678894
+      ],
+      [
+        0.4478856325149536,
+        0.023809850215911865,
+        0.9016664624214172
+      ]
+    ],
+    "pin_assignment": [
+      1,
+      2,
+      0
+    ],
+    "xy_errors_mm": [
+      0.2769544953480363,
+      0.2851080789696425,
+      0.17540280532557517
+    ]
+  },
+  "cpu_diagnostics": {
+    "scope": "CPU and GPU results are not pooled. Checkpoint state was restored without editing object poses.",
+    "contact_checkpoint_continuation": {
+      "seed": 43,
+      "first_three_success": true,
+      "first_four_success": true,
+      "assembly_success": null,
+      "simulation_seconds": 99.85,
+      "failure": null,
+      "verified_first_three": true,
+      "verified_fourth": true,
+      "centre_seated": true,
+      "centre_position": [
+        0.3978640139102936,
+        0.07731832563877106,
+        0.9101403951644897
+      ],
+      "centre_quaternion": [
+        0.9938046932220459,
+        -6.715494009768008e-07,
+        0.0005030315951444209,
+        0.11113954335451126
+      ],
+      "carrier_position": [
+        0.3985587954521179,
+        0.07518614083528519,
+        0.901639997959137
+      ],
+      "centre_error_mm": [
+        -0.6947815418243408,
+        2.1321847438812256,
+        8.500396728515625
+      ],
+      "centre_seat_error_mm": [
+        -0.7037818431854248,
+        2.131164073944092,
+        -0.4996061325073242
+      ],
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "assembly_score": 4,
+      "gear_positions": [
+        [
+          0.35156193375587463,
+          0.1017790138721466,
+          0.9114214181900024
+        ],
+        [
+          0.4450336694717407,
+          0.10269676148891449,
+          0.9112762808799744
+        ],
+        [
+          0.39916983246803284,
+          0.021218452602624893,
+          0.9114077687263489
+        ]
+      ],
+      "gear_quaternions": [
+        [
+          0.9445292949676514,
+          -0.0064797550439834595,
+          0.0005291497800499201,
+          -0.32836300134658813
+        ],
+        [
+          0.9928871393203735,
+          -0.0003465496120043099,
+          -3.409348937566392e-05,
+          -0.11905892938375473
+        ],
+        [
+          0.9880115389823914,
+          -0.0015148806851357222,
+          0.0014606035547330976,
+          0.1543663889169693
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.39914950728416443,
+          0.0211893692612648,
+          0.9016455411911011
+        ],
+        [
+          0.4450259804725647,
+          0.10269610583782196,
+          0.9015904068946838
+        ],
+        [
+          0.35150086879730225,
+          0.1016729474067688,
+          0.901684045791626
+        ]
+      ],
+      "pin_assignment": [
+        2,
+        1,
+        0
+      ],
+      "xy_errors_mm": [
+        0.1223888248205185,
+        0.007716902473475784,
+        0.03548173845047131
+      ],
+      "method": "CPU continuation from a GPU checkpoint with the fourth gear already picked up, above contact. Same final fourth-stage control behavior; first-three policy changes made later do not execute during this continuation.",
+      "device": "cpu",
+      "command": "Temporary diagnostic runner /tmp/r1pro-sun/diagnose-cpu.py, --device cpu, --checkpoint-in /tmp/r1pro-sun/contact43.pt, --first-four",
+      "source_result_sha256": "123da9ee851996419e375414c36e643cf785da03187727ee5a44b642c5a55fc7",
+      "trace_sha256": "f030baf991d4f23b1bdd5765ffb6ec72d5e5a88d3378e8f4d45e4efe73e3ebe7"
+    },
+    "full_sequence_attempt": {
+      "seed": 43,
+      "first_three_success": true,
+      "first_four_success": false,
+      "assembly_success": false,
+      "simulation_seconds": 91.05,
+      "failure": "gear 4: could not retreat for a retry",
+      "verified_first_three": true,
+      "verified_fourth": false,
+      "centre_seated": false,
+      "centre_position": [
+        0.4532451629638672,
+        -0.1672157645225525,
+        0.9024235010147095
+      ],
+      "centre_quaternion": [
+        0.9733550548553467,
+        -0.0002779785718303174,
+        -0.002852421486750245,
+        -0.22928521037101746
+      ],
+      "carrier_position": [
+        0.451592355966568,
+        0.026049884036183357,
+        0.9026951789855957
+      ],
+      "centre_error_mm": [
+        1.6528069972991943,
+        -193.26564025878906,
+        -0.27167797088623047
+      ],
+      "centre_seat_error_mm": [
+        1.7351210117340088,
+        -193.26669311523438,
+        -9.271324157714844
+      ],
+      "seated": [
+        true,
+        true,
+        true
+      ],
+      "assembly_score": 3,
+      "gear_positions": [
+        [
+          0.40377023816108704,
+          0.05155258625745773,
+          0.9119791984558105
+        ],
+        [
+          0.49735990166664124,
+          0.05461158603429794,
+          0.9127946496009827
+        ],
+        [
+          0.45331352949142456,
+          -0.02789449691772461,
+          0.912409245967865
+        ]
+      ],
+      "gear_quaternions": [
+        [
+          0.938499391078949,
+          -0.0004886578535661101,
+          -0.013646481558680534,
+          -0.3450109362602234
+        ],
+        [
+          0.9940515756607056,
+          -0.0003235911426600069,
+          -0.003188122296705842,
+          -0.10886357724666595
+        ],
+        [
+          0.9691603779792786,
+          -0.0025122042279690504,
+          -0.0035279032308608294,
+          0.24639306962490082
+        ]
+      ],
+      "pin_positions": [
+        [
+          0.45338892936706543,
+          -0.02792021818459034,
+          0.9027178287506104
+        ],
+        [
+          0.4977726638317108,
+          0.0544021800160408,
+          0.9031143188476562
+        ],
+        [
+          0.40362876653671265,
+          0.05126790702342987,
+          0.9022535085678101
+        ]
+      ],
+      "pin_assignment": [
+        2,
+        1,
+        0
+      ],
+      "xy_errors_mm": [
+        0.3178938350174576,
+        0.46284281415864825,
+        0.07966633711475879
+      ],
+      "method": "CPU continuation from the first-three GPU checkpoint. Pickup recovery failed before fourth-gear insertion, so this does not validate later-stage retention.",
+      "device": "cpu",
+      "command": "Temporary diagnostic runner /tmp/r1pro-sun/diagnose-cpu.py, --device cpu, --checkpoint-in /tmp/r1pro-sun/start43.pt, --full-assembly",
+      "source_result_sha256": "e7fceb90b114a752488007e586837720680145fbce487f92494dd73e6dde829e",
+      "trace_sha256": "0966528788936dc7fef63865cb02179fb9af55f3e2e0c9d86bca7e4fbd30106b"
+    }
+  },
+  "limitations": [
+    "One fresh GPU layout and one checkpoint continuation cannot establish a guaranteed success rate across random layouts.",
+    "These GPU checks cover the first four gears. The later ring/reducer sequence remains timed and was not validated through completion with this final controller.",
+    "CPU behavior is not validated as equivalent: the full-sequence CPU checkpoint continuation failed during pickup recovery, despite a successful short contact continuation.",
+    "The policy uses simulator object poses; physical-robot performance and calibrated axial force control were not tested.",
+    "Synthetic compatible-phase checkpoints were used during diagnosis only and are excluded from validation outcomes and success-rate claims."
+  ],
+  "source_sha256": {
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_sun.py": "9c0144de25e5ab6cd84156651491d12f8afab5bf16b1e2709981f2f3b92f40a3",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_planetary.py": "2d71cdb2b28eb1efba0eb3f3fb662d0aae4f183c3cbbd4f1274ee2269b3af0cb",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_pro_rule_policy.py": "119023bd404dfc24614396abf5ddf9d355f2cea0ac72cbdc4f50012bdd8bf0fc",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/r1_lite_rule_policy.py": "789b5fab7398ee57921ae93c80bda264ba1ae6be365dbde66400a22fd1df0c63",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/robots/gearbox_geometry.py": "70e38ddc3eeaed6106aef8f33a8e3007d4a3c49d12a252b7734c590dedded0bd",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/tasks/direct/galaxea_lab_external/galaxea_lab_external_env.py": "5390ad7a5c804d6f8ee5bd724fcd6a881a39c951a2ed4fd92a9ffcddb8358648",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/tasks/direct/galaxea_lab_external/galaxea_lab_external_env_cfg.py": "9a95f3390555ff02ef586cbfc3c8cafe810e2bbc499d02c976d8b26410906405",
+    "source/Galaxea_Lab_External/Galaxea_Lab_External/tasks/direct/galaxea_lab_agent/galaxea_lab_agent_env.py": "e4b4dd1bbd6800ee5daa251ba9f89f7a3b5d14f1a854ef5cea183570a80708ed",
+    "scripts/evaluate_r1pro.py": "9f1657803b7229f393817ead7526b93ebf6645b6d9ddf14b70876ab81bccdbf9",
+    "scripts/test_r1pro_planetary.py": "2686393b79cf8caf68e00beea6c803a8c33cf4975a4df9073f763c14feef3fde"
+  }
+}

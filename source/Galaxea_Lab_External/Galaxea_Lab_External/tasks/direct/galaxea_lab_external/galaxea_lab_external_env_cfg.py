@@ -40,14 +40,19 @@ class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
     # Record data
     record_data = True
     record_freq = 5
+    # By default only complete (five-point) assemblies are written.  The
+    # rule-based generator can set this to an integer threshold with
+    # --keep_failed MIN_SCORE; None means discard every failed episode.
+    keep_failed = None
 
     # env
     sim_dt = 0.01
     decimation = 5
-    episode_length_s = 60.0
+    episode_length_s = getattr(ACTIVE_ROBOT_BUNDLE.rule_policy_class, "EPISODE_LENGTH_S", 60.0)
     # - spaces definition
-    action_space = 14
-    observation_space = 14
+    # per-arm joints + one finger joint per gripper (6+6+1+1 = 14 for R1/R1_Lite, 16 for R1Pro)
+    action_space = 2 * ACTIVE_ROBOT_BUNDLE.num_arm_joints + 2
+    observation_space = 2 * ACTIVE_ROBOT_BUNDLE.num_arm_joints + 2
     state_space = 0
     num_rerenders_on_reset = 5
 
@@ -62,8 +67,11 @@ class GalaxeaLabExternalEnvCfg(DirectRLEnvCfg):
     robot_cfg: ArticulationCfg = ACTIVE_ROBOT_BUNDLE.articulation_cfg.replace(prim_path="/World/envs/env_.*/Robot")
     rule_policy_class: type = ACTIVE_ROBOT_BUNDLE.rule_policy_class
 
-    # table_cfg: AssetBaseCfg = TABLE_CFG.copy()
     table_cfg: RigidObjectCfg = TABLE_CFG.replace(prim_path="/World/envs/env_.*/Table")
+    # Zero velocity limits still allow contact position corrections to move a
+    # dynamic table. Keep the work surface fixed while every assembly part
+    # remains dynamic, so gripping one part cannot shake the mounted gears.
+    table_cfg.spawn.rigid_props.kinematic_enabled = True
 
     ring_gear_cfg: RigidObjectCfg = RING_GEAR_CFG.replace(prim_path="/World/envs/env_.*/ring_gear",
                                                                        init_state=RigidObjectCfg.InitialStateCfg(
